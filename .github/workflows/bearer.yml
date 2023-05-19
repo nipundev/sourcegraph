@@ -14,4 +14,4 @@ jobs:
         id: report
         uses: bearer/bearer-action@v2
         with:
-          api-key: e67fda3fd7a20c1ddc5e9946b1dd6bc2
+          api-key: ${{ secrets.BEARER_TOKEN }}
