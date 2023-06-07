@@ -3,6 +3,7 @@ package shared
 import (
 	"context"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/go-redsync/redsync/v4"
@@ -47,10 +48,24 @@ func Main(ctx context.Context, obctx *observation.Context, ready service.ReadyFu
 	if config.BigQuery.ProjectID != "" {
 		eventLogger, err = events.NewBigQueryLogger(config.BigQuery.ProjectID, config.BigQuery.Dataset, config.BigQuery.Table)
 		if err != nil {
-			return errors.Wrap(err, "create event logger")
+			return errors.Wrap(err, "create BigQuery event logger")
+		}
+
+		// If a buffer is configured, wrap in events.BufferedLogger
+		if config.BigQuery.EventBufferSize > 0 {
+			eventLogger = events.NewBufferedLogger(obctx.Logger, eventLogger, config.BigQuery.EventBufferSize)
 		}
 	} else {
 		eventLogger = events.NewStdoutLogger(obctx.Logger)
+
+		// Useful for testing event logging in a way that has latency that is
+		// somewhat similar to BigQuery.
+		if os.Getenv("CODY_GATEWAY_BUFFERED_LAGGY_EVENT_LOGGING_FUN_TIMES_MODE") == "true" {
+			eventLogger = events.NewBufferedLogger(
+				obctx.Logger,
+				events.NewDelayedLogger(eventLogger),
+				config.BigQuery.EventBufferSize)
+		}
 	}
 
 	// Supported actor/auth sources
@@ -71,14 +86,20 @@ func Main(ctx context.Context, obctx *observation.Context, ready service.ReadyFu
 
 	rs := newRedisStore(redispool.Cache)
 
+	obctx.Logger.Debug("concurrency limit",
+		log.Float32("percentage", config.ActorConcurrencyLimit.Percentage),
+		log.String("internal", config.ActorConcurrencyLimit.Interval.String()),
+	)
 	// Set up our handler chain, which is run from the bottom up. Application handlers
 	// come last.
 	handler := httpapi.NewHandler(obctx.Logger, eventLogger, rs, authr, &httpapi.Config{
-		AnthropicAccessToken:   config.Anthropic.AccessToken,
-		AnthropicAllowedModels: config.Anthropic.AllowedModels,
-		OpenAIAccessToken:      config.OpenAI.AccessToken,
-		OpenAIOrgID:            config.OpenAI.OrgID,
-		OpenAIAllowedModels:    config.OpenAI.AllowedModels,
+		ConcurrencyLimit:        config.ActorConcurrencyLimit,
+		AnthropicAccessToken:    config.Anthropic.AccessToken,
+		AnthropicAllowedModels:  config.Anthropic.AllowedModels,
+		OpenAIAccessToken:       config.OpenAI.AccessToken,
+		OpenAIOrgID:             config.OpenAI.OrgID,
+		OpenAIAllowedModels:     config.OpenAI.AllowedModels,
+		EmbeddingsAllowedModels: config.AllowedEmbeddingsModels,
 	})
 
 	// Diagnostic layers
@@ -125,11 +146,17 @@ func Main(ctx context.Context, obctx *observation.Context, ready service.ReadyFu
 	ready()
 	obctx.Logger.Info("service ready", log.String("address", config.Address))
 
-	// Block until done
-	goroutine.MonitorBackgroundRoutines(ctx,
+	// Collect background routines
+	backgroundRoutines := []goroutine.BackgroundRoutine{
 		server,
 		sources.Worker(obctx, sourceWorkerMutex, config.SourcesSyncInterval),
-	)
+	}
+	if w, ok := eventLogger.(goroutine.BackgroundRoutine); ok {
+		// eventLogger is events.BufferedLogger
+		backgroundRoutines = append(backgroundRoutines, w)
+	}
+	// Block until done
+	goroutine.MonitorBackgroundRoutines(ctx, backgroundRoutines...)
 
 	return nil
 }
@@ -159,8 +186,8 @@ type redisStore struct {
 	store redispool.KeyValue
 }
 
-func (s *redisStore) Incr(key string) (int, error) {
-	return s.store.Incr(key)
+func (s *redisStore) Incrby(key string, val int) (int, error) {
+	return s.store.Incrby(key, val)
 }
 
 func (s *redisStore) GetInt(key string) (int, error) {

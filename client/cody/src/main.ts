@@ -8,11 +8,12 @@ import { DOTCOM_URL, LOCAL_APP_URL, isLoggedIn } from './chat/protocol'
 import { CodyCompletionItemProvider } from './completions'
 import { CompletionsDocumentProvider } from './completions/docprovider'
 import { History } from './completions/history'
+import * as CompletionsLogger from './completions/logger'
 import { getConfiguration, getFullConfig } from './configuration'
 import { VSCodeEditor } from './editor/vscode-editor'
 import { logEvent, updateEventLogger } from './event-logger'
 import { configureExternalServices } from './external-services'
-import { TaskController } from './non-stop/TaskController'
+import { FixupController } from './non-stop/FixupController'
 import { getRgPath } from './rg'
 import { GuardrailsProvider } from './services/GuardrailsProvider'
 import { InlineController } from './services/InlineController'
@@ -23,6 +24,9 @@ import {
     SecretStorage,
     VSCodeSecretStorage,
 } from './services/SecretStorageProvider'
+
+const CODY_FEEDBACK_URL =
+    'https://github.com/sourcegraph/sourcegraph/discussions/new?category=product-feedback&labels=cody,cody/vscode'
 
 /**
  * Start the extension, watching all relevant configuration and secrets for changes.
@@ -80,8 +84,8 @@ const register = async (
     const commentController = new InlineController(context.extensionPath)
     disposables.push(commentController.get())
 
-    const taskController = new TaskController()
-    const controllers = { inline: commentController, task: taskController }
+    const fixup = new FixupController()
+    const controllers = { inline: commentController, task: fixup, fixup }
 
     const editor = new VSCodeEditor(controllers)
     const workspaceConfig = vscode.workspace.getConfiguration()
@@ -156,7 +160,7 @@ const register = async (
         vscode.commands.registerCommand('cody.comment.add', async (comment: vscode.CommentReply) => {
             const isFixMode = /^\/f(ix)?\s/i.test(comment.text.trimStart())
             await commentController.chat(comment, isFixMode)
-            await chatProvider.executeRecipe(isFixMode ? 'fixup' : 'inline-chat', comment.text, false)
+            await chatProvider.executeRecipe('inline-chat', comment.text.trimStart(), false)
             logEvent(`CodyVSCodeExtension:inline-assist:${isFixMode ? 'fixup' : 'chat'}`)
         }),
         vscode.commands.registerCommand('cody.comment.delete', (thread: vscode.CommentThread) => {
@@ -172,9 +176,37 @@ const register = async (
             await chatProvider.logout()
         }),
         // Commands
+        vscode.commands.registerCommand('cody.welcome', () =>
+            vscode.commands.executeCommand('workbench.action.openWalkthrough', 'sourcegraph.cody-ai#welcome', false)
+        ),
+        vscode.commands.registerCommand('cody.feedback', () =>
+            vscode.commands.executeCommand('vscode.open', vscode.Uri.parse(CODY_FEEDBACK_URL))
+        ),
         vscode.commands.registerCommand('cody.focus', () => vscode.commands.executeCommand('cody.chat.focus')),
         vscode.commands.registerCommand('cody.settings', () => chatProvider.setWebviewView('settings')),
         vscode.commands.registerCommand('cody.history', () => chatProvider.setWebviewView('history')),
+        vscode.commands.registerCommand('cody.walkthrough.showLogin', () =>
+            vscode.commands.executeCommand('workbench.view.extension.cody')
+        ),
+        vscode.commands.registerCommand('cody.walkthrough.showChat', () => chatProvider.setWebviewView('chat')),
+        vscode.commands.registerCommand('cody.walkthrough.showFixup', () => chatProvider.setWebviewView('recipes')),
+        vscode.commands.registerCommand('cody.walkthrough.showExplain', () => chatProvider.setWebviewView('recipes')),
+        vscode.commands.registerCommand('cody.walkthrough.enableInlineAssist', async () => {
+            await workspaceConfig.update('cody.experimental.inline', true, vscode.ConfigurationTarget.Global)
+            // Open VSCode setting view. Provides visual confirmation that the setting is enabled.
+            return vscode.commands.executeCommand('workbench.action.openSettings', {
+                query: 'cody.experimental.inline',
+                openToSide: true,
+            })
+        }),
+        vscode.commands.registerCommand('cody.walkthrough.enableCodeCompletions', async () => {
+            await workspaceConfig.update('cody.experimental.suggestions', true, vscode.ConfigurationTarget.Global)
+            // Open VSCode setting view. Provides visual confirmation that the setting is enabled.
+            return vscode.commands.executeCommand('workbench.action.openSettings', {
+                query: 'cody.experimental.suggestions',
+                openToSide: true,
+            })
+        }),
         vscode.commands.registerCommand('cody.interactive.clear', async () => {
             await chatProvider.clearAndRestartSession()
             chatProvider.setWebviewView('chat')
@@ -238,9 +270,8 @@ const register = async (
             vscode.commands.registerCommand('cody.manual-completions', async () => {
                 await completionsProvider.fetchAndShowManualCompletions()
             }),
-            vscode.commands.registerCommand('cody.completions.inline.accepted', () => {
-                const params = { type: 'inline' }
-                logEvent('CodyVSCodeExtension:completion:accepted', params, params)
+            vscode.commands.registerCommand('cody.completions.inline.accepted', ({ codyLogId }) => {
+                CompletionsLogger.accept(codyLogId)
             }),
             vscode.languages.registerInlineCompletionItemProvider({ scheme: 'file' }, completionsProvider)
         )
@@ -255,7 +286,7 @@ const register = async (
             },
         }
         disposables.push(
-            vscode.commands.registerCommand('cody.recipe.file-flow', () => executeRecipe('file-flow', false))
+            vscode.commands.registerCommand('cody.recipe.file-touch', () => executeRecipe('file-touch', false))
         )
     }
 
@@ -269,7 +300,7 @@ const register = async (
     }
     // Register task view and non-stop cody command when feature flag is on
     if (initialConfig.experimentalNonStop || process.env.CODY_TESTING === 'true') {
-        disposables.push(vscode.window.registerTreeDataProvider('cody.fixup.tree.view', taskController.getTaskView()))
+        disposables.push(vscode.window.registerTreeDataProvider('cody.fixup.tree.view', fixup.getTaskView()))
         disposables.push(
             vscode.commands.registerCommand('cody.recipe.non-stop', async () => {
                 await chatProvider.executeRecipe('non-stop', '', false)

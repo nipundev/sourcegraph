@@ -37,12 +37,19 @@ type Store interface {
 	InsertReferencesForRanking(ctx context.Context, graphKey string, batchSize int, exportedUploadID int, references chan string) error
 	InsertInitialPathRanks(ctx context.Context, exportedUploadID int, documentPaths []string, batchSize int, graphKey string) error
 
+	// Graph keys
+	DerivativeGraphKey(ctx context.Context) (string, time.Time, bool, error)
+	BumpDerivativeGraphKey(ctx context.Context) error
+	DeleteRankingProgress(ctx context.Context, graphKey string) error
+
 	// Coordinates mapper+reducer phases
 	Coordinate(ctx context.Context, derivativeGraphKey string) error
 
 	// Mapper behavior + cleanup
 	InsertPathCountInputs(ctx context.Context, derivativeGraphKey string, batchSize int) (numReferenceRecordsProcessed int, numInputsInserted int, err error)
 	InsertInitialPathCounts(ctx context.Context, derivativeGraphKey string, batchSize int) (numInitialPathsProcessed int, numInitialPathRanksInserted int, err error)
+	VacuumStaleProcessedReferences(ctx context.Context, derivativeGraphKey string, batchSize int) (processedReferencesDeleted int, _ error)
+	VacuumStaleProcessedPaths(ctx context.Context, derivativeGraphKey string, batchSize int) (processedPathsDeleted int, _ error)
 	VacuumStaleGraphs(ctx context.Context, derivativeGraphKey string, batchSize int) (inputRecordsDeleted int, _ error)
 
 	// Reducer behavior + cleanup
