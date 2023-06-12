@@ -3,8 +3,9 @@ import * as vscode from 'vscode'
 import { RecipeID } from '@sourcegraph/cody-shared/src/chat/recipes/recipe'
 import { ConfigurationWithAccessToken } from '@sourcegraph/cody-shared/src/configuration'
 
-import { ChatViewProvider, getAuthStatus } from './chat/ChatViewProvider'
+import { ChatViewProvider } from './chat/ChatViewProvider'
 import { DOTCOM_URL, LOCAL_APP_URL, isLoggedIn } from './chat/protocol'
+import { getAuthStatus } from './chat/utils'
 import { CodyCompletionItemProvider } from './completions'
 import { CompletionsDocumentProvider } from './completions/docprovider'
 import { History } from './completions/history'
@@ -118,8 +119,7 @@ const register = async (
     disposables.push(
         vscode.window.registerWebviewViewProvider('cody.chat', chatProvider, {
             webviewOptions: { retainContextWhenHidden: true },
-        }),
-        { dispose: () => vscode.commands.executeCommand('setContext', 'cody.activated', false) }
+        })
     )
 
     const executeRecipe = async (recipe: RecipeID, showTab = true): Promise<void> => {
@@ -175,6 +175,9 @@ const register = async (
         vscode.commands.registerCommand('cody.delete-access-token', async () => {
             await chatProvider.logout()
         }),
+        vscode.commands.registerCommand('cody.clear-chat-history', async () => {
+            await chatProvider.clearHistory()
+        }),
         // Commands
         vscode.commands.registerCommand('cody.welcome', () =>
             vscode.commands.executeCommand('workbench.action.openWalkthrough', 'sourcegraph.cody-ai#welcome', false)
@@ -200,10 +203,10 @@ const register = async (
             })
         }),
         vscode.commands.registerCommand('cody.walkthrough.enableCodeCompletions', async () => {
-            await workspaceConfig.update('cody.experimental.suggestions', true, vscode.ConfigurationTarget.Global)
+            await workspaceConfig.update('cody.completions', true, vscode.ConfigurationTarget.Global)
             // Open VSCode setting view. Provides visual confirmation that the setting is enabled.
             return vscode.commands.executeCommand('workbench.action.openSettings', {
-                query: 'cody.experimental.suggestions',
+                query: 'cody.completions',
                 openToSide: true,
             })
         }),
@@ -254,7 +257,7 @@ const register = async (
         })
     )
 
-    if (initialConfig.experimentalSuggest) {
+    if (initialConfig.completions) {
         // TODO(sqs): make this listen to config and not just use initialConfig
         const docprovider = new CompletionsDocumentProvider()
         disposables.push(vscode.workspace.registerTextDocumentContentProvider('cody', docprovider))
@@ -307,6 +310,11 @@ const register = async (
             })
         )
         await vscode.commands.executeCommand('setContext', 'cody.nonstop.fixups.enabled', true)
+    }
+
+    if (initialConfig.serverEndpoint && initialConfig.accessToken) {
+        const authStatus = await getAuthStatus(initialConfig)
+        await vscode.commands.executeCommand('setContext', 'cody.activated', isLoggedIn(authStatus))
     }
 
     return {
