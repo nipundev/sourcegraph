@@ -49,6 +49,7 @@ go_test(
         "resolvers_test.go",
     ],
     embed = [":resolvers"],
+    flaky = True,
     tags = [
         # Test requires localhost database
         "requires-network",
@@ -69,7 +70,6 @@ go_test(
         "//internal/database",
         "//internal/database/dbtest",
         "//internal/database/fakedb",
-        "//internal/featureflag",
         "//internal/gitserver",
         "//internal/rbac/types",
         "//internal/types",

@@ -10,16 +10,15 @@ import com.intellij.ide.ui.laf.darcula.ui.DarculaButtonUI;
 import com.intellij.ide.ui.laf.darcula.ui.DarculaTextAreaUI;
 import com.intellij.openapi.actionSystem.*;
 import com.intellij.openapi.application.ApplicationManager;
+import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.project.DumbAwareAction;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.ui.VerticalFlowLayout;
 import com.intellij.ui.components.JBScrollPane;
 import com.intellij.ui.components.JBTabbedPane;
 import com.intellij.ui.components.JBTextArea;
-import com.intellij.util.ui.JBUI;
-import com.sourcegraph.cody.chat.Chat;
-import com.sourcegraph.cody.chat.ChatBubble;
-import com.sourcegraph.cody.chat.ChatMessage;
+import com.intellij.util.ui.*;
+import com.sourcegraph.cody.chat.*;
 import com.sourcegraph.cody.editor.EditorContext;
 import com.sourcegraph.cody.editor.EditorContextGetter;
 import com.sourcegraph.cody.prompts.SupportedLanguages;
@@ -37,9 +36,11 @@ import javax.swing.*;
 import javax.swing.border.EmptyBorder;
 import javax.swing.plaf.ButtonUI;
 import javax.swing.plaf.basic.BasicTextAreaUI;
+import org.apache.commons.lang3.StringUtils;
 import org.jetbrains.annotations.NotNull;
 
 class CodyToolWindowContent implements UpdatableChat {
+  public static Logger logger = Logger.getInstance(CodyToolWindowContent.class);
   private static final int CHAT_TAB_INDEX = 0;
   private static final int RECIPES_TAB_INDEX = 1;
   private final @NotNull JBTabbedPane tabbedPane = new JBTabbedPane();
@@ -96,7 +97,9 @@ class CodyToolWindowContent implements UpdatableChat {
                               editorSelection));
                 }));
     JButton gitHistoryButton = createWideButton("Summarize recent code changes");
-    gitHistoryButton.addActionListener(e -> recipeRunner.runGitHistory());
+    gitHistoryButton.addActionListener(
+        e ->
+            new SummarizeRecentChangesRecipe(project, this, recipeRunner).summarizeRecentChanges());
     JButton findCodeSmellsButton = createWideButton("Smell code");
     findCodeSmellsButton.addActionListener(
         e -> executeRecipeWithPromptProvider(recipeRunner, new FindCodeSmellsPromptProvider()));
@@ -148,7 +151,13 @@ class CodyToolWindowContent implements UpdatableChat {
     promptInput = createPromptInput(this.project);
 
     JPanel messagePanel = new JPanel(new BorderLayout());
-    messagePanel.add(promptInput, BorderLayout.CENTER);
+
+    JBScrollPane promptInputWithScroll =
+        new JBScrollPane(
+            promptInput,
+            JBScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED,
+            JBScrollPane.HORIZONTAL_SCROLLBAR_NEVER);
+    messagePanel.add(promptInputWithScroll, BorderLayout.CENTER);
     messagePanel.setBorder(BorderFactory.createEmptyBorder(0, 0, 10, 0));
 
     controlsPanel.add(messagePanel, BorderLayout.NORTH);
@@ -159,7 +168,7 @@ class CodyToolWindowContent implements UpdatableChat {
     contentPanel.setBorder(BorderFactory.createEmptyBorder(0, 0, 10, 0));
     contentPanel.add(chatPanel, BorderLayout.CENTER);
     contentPanel.add(controlsPanel, BorderLayout.SOUTH);
-
+    tabbedPane.addChangeListener(e -> this.focusPromptInput());
     // Add welcome message
     addWelcomeMessage();
   }
@@ -193,9 +202,26 @@ class CodyToolWindowContent implements UpdatableChat {
   }
 
   private void addWelcomeMessage() {
-    var welcomeText =
+    boolean isEnterprise =
+        ConfigUtil.getInstanceType(project).equals(SettingsComponent.InstanceType.ENTERPRISE);
+    String accessToken =
+        isEnterprise
+            ? ConfigUtil.getEnterpriseAccessToken(project)
+            : ConfigUtil.getDotComAccessToken(project);
+    String welcomeText =
         "Hello! I'm Cody. I can write code and answer questions for you. See [Cody documentation](https://docs.sourcegraph.com/cody) for help and tips.";
     addMessageToChat(ChatMessage.createAssistantMessage(welcomeText));
+    if (StringUtils.isEmpty(accessToken)) {
+      String noAccessTokenText =
+          "<p>It looks like you don't have Sourcegraph Access Token configured.</p>"
+              + "<p>See our <a href=\"https://docs.sourcegraph.com/cli/how-tos/creating_an_access_token\">user docs</a> how to create one and configure it in the settings to use Cody.</p>";
+      AssistantMessageWithSettingsButton assistantMessageWithSettingsButton =
+          new AssistantMessageWithSettingsButton(project, noAccessTokenText);
+      var messageContentPanel = new JPanel(new BorderLayout());
+      messageContentPanel.add(assistantMessageWithSettingsButton);
+      ApplicationManager.getApplication()
+          .invokeLater(() -> addComponentToChat(messageContentPanel));
+    }
   }
 
   @NotNull
@@ -213,7 +239,10 @@ class CodyToolWindowContent implements UpdatableChat {
     JBTextArea promptInput = new RoundedJBTextArea(4, 0, 10);
     BasicTextAreaUI textUI = (BasicTextAreaUI) DarculaTextAreaUI.createUI(promptInput);
     promptInput.setUI(textUI);
+    promptInput.setFont(UIUtil.getLabelFont());
     promptInput.setLineWrap(true);
+    promptInput.setWrapStyleWord(true);
+    promptInput.requestFocusInWindow();
     KeyboardShortcut CTRL_ENTER =
         new KeyboardShortcut(getKeyStroke(VK_ENTER, CTRL_DOWN_MASK), null);
     KeyboardShortcut META_ENTER =
@@ -236,24 +265,28 @@ class CodyToolWindowContent implements UpdatableChat {
         .invokeLater(
             () -> {
               // Bubble panel
-              var bubblePanel = new JPanel();
-              bubblePanel.setLayout(
-                  new VerticalFlowLayout(VerticalFlowLayout.TOP, 0, 0, true, false));
-              // Chat bubble
               ChatBubble bubble = new ChatBubble(message);
-              bubblePanel.add(bubble, VerticalFlowLayout.TOP);
-              messagesPanel.add(bubblePanel);
+              addComponentToChat(bubble);
+            });
+  }
+
+  private void addComponentToChat(JPanel message) {
+
+    var bubblePanel = new JPanel();
+    bubblePanel.setLayout(new VerticalFlowLayout(VerticalFlowLayout.TOP, 0, 0, true, false));
+    // Chat message
+    bubblePanel.add(message, VerticalFlowLayout.TOP);
+    messagesPanel.add(bubblePanel);
+    messagesPanel.revalidate();
+    messagesPanel.repaint();
+
+    // Need this hacky solution to scroll all the way down after each message
+    ApplicationManager.getApplication()
+        .invokeLater(
+            () -> {
+              needScrollingDown = true;
               messagesPanel.revalidate();
               messagesPanel.repaint();
-
-              // Need this hacky solution to scroll all the way down after each message
-              ApplicationManager.getApplication()
-                  .invokeLater(
-                      () -> {
-                        needScrollingDown = true;
-                        messagesPanel.revalidate();
-                        messagesPanel.repaint();
-                      });
             });
   }
 
@@ -266,6 +299,31 @@ class CodyToolWindowContent implements UpdatableChat {
   public void respondToMessage(@NotNull ChatMessage message, @NotNull String responsePrefix) {
     activateChatTab();
     sendMessage(this.project, message, responsePrefix);
+  }
+
+  @Override
+  public void respondToErrorFromServer(@NotNull String errorMessage) {
+    if (errorMessage.equals("Connection refused")) {
+      this.addMessageToChat(
+          ChatMessage.createAssistantMessage(
+              "I'm sorry, I can't connect to the server. Please make sure that the server is running and try again."));
+    } else if (errorMessage.startsWith("Got error response 401")) {
+      String invalidAccessTokenText =
+          "<p>It looks like your Sourcegraph Access Token is invalid or not configured.</p>"
+              + "<p>See our <a href=\"https://docs.sourcegraph.com/cli/how-tos/creating_an_access_token\">user docs</a> how to create one and configure it in the settings to use Cody.</p>";
+      AssistantMessageWithSettingsButton assistantMessageWithSettingsButton =
+          new AssistantMessageWithSettingsButton(project, invalidAccessTokenText);
+      var messageContentPanel = new JPanel(new BorderLayout());
+      messageContentPanel.add(assistantMessageWithSettingsButton);
+      ApplicationManager.getApplication()
+          .invokeLater(() -> this.addComponentToChat(messageContentPanel));
+    } else {
+      this.addMessageToChat(
+          ChatMessage.createAssistantMessage(
+              "I'm sorry, something wet wrong. Please try again. The error message I got was: \""
+                  + errorMessage
+                  + "\"."));
+    }
   }
 
   public synchronized void updateLastMessage(@NotNull ChatMessage message) {
@@ -297,6 +355,7 @@ class CodyToolWindowContent implements UpdatableChat {
     ApplicationManager.getApplication()
         .invokeLater(
             () -> {
+              sendButton.setEnabled(true);
               messagesPanel.removeAll();
               addWelcomeMessage();
               messagesPanel.revalidate();
@@ -306,6 +365,7 @@ class CodyToolWindowContent implements UpdatableChat {
 
   private void sendMessage(@NotNull Project project) {
     String messageText = promptInput.getText();
+    promptInput.setText("");
     sendMessage(
         project,
         ChatMessage.createHumanMessage(messageText, messageText, Collections.emptyList()),
@@ -324,7 +384,6 @@ class CodyToolWindowContent implements UpdatableChat {
         isEnterprise
             ? ConfigUtil.getEnterpriseAccessToken(project)
             : ConfigUtil.getDotComAccessToken(project);
-    System.out.println("isEnterprise: " + isEnterprise);
 
     var chat = new Chat("", instanceUrl, accessToken != null ? accessToken : "");
     ArrayList<String> contextFiles =
@@ -339,12 +398,24 @@ class CodyToolWindowContent implements UpdatableChat {
     //       in the main thread and then waited, we wouldn't see the messages streamed back to us.
     new Thread(
             () -> {
-              chat.sendMessage(humanMessage, responsePrefix, this); // TODO: Use prefix
+              try {
+                chat.sendMessage(project, humanMessage, responsePrefix, this);
+              } catch (Exception e) {
+                logger.error("Error sending message '" + humanMessage + "' to chat", e);
+              }
             })
         .start();
   }
 
   public @NotNull JComponent getContentPanel() {
     return tabbedPane;
+  }
+
+  public void focusPromptInput() {
+    if (tabbedPane.getSelectedIndex() == CHAT_TAB_INDEX) {
+      promptInput.requestFocusInWindow();
+      int textLength = promptInput.getDocument().getLength();
+      promptInput.setCaretPosition(textLength);
+    }
   }
 }

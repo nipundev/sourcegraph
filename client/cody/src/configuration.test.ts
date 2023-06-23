@@ -1,5 +1,6 @@
 import type * as vscode from 'vscode'
 
+import { DOTCOM_URL } from './chat/protocol'
 import { getConfiguration } from './configuration'
 
 describe('getConfiguration', () => {
@@ -8,10 +9,10 @@ describe('getConfiguration', () => {
             get: <T>(_key: string, defaultValue?: T): typeof defaultValue | undefined => defaultValue,
         }
         expect(getConfiguration(config)).toEqual({
-            serverEndpoint: '',
+            serverEndpoint: DOTCOM_URL.href,
             codebase: '',
             useContext: 'embeddings',
-            experimentalSuggest: false,
+            autocomplete: false,
             experimentalChatPredictions: false,
             experimentalGuardrails: false,
             experimentalInline: false,
@@ -20,6 +21,11 @@ describe('getConfiguration', () => {
             debugEnable: false,
             debugVerbose: false,
             debugFilter: null,
+            autocompleteAdvancedProvider: 'anthropic',
+            autocompleteAdvancedServerEndpoint: null,
+            autocompleteAdvancedAccessToken: null,
+            autocompleteAdvancedCache: true,
+            autocompleteAdvancedEmbeddings: true,
         })
     })
 
@@ -38,7 +44,7 @@ describe('getConfiguration', () => {
                             'Cache-Control': 'no-cache',
                             'Proxy-Authenticate': 'Basic',
                         }
-                    case 'cody.experimental.suggestions':
+                    case 'cody.autocomplete.enabled':
                         return true
                     case 'cody.experimental.chatPredictions':
                         return true
@@ -54,6 +60,16 @@ describe('getConfiguration', () => {
                         return true
                     case 'cody.debug.filter':
                         return /.*/
+                    case 'cody.autocomplete.advanced.provider':
+                        return 'unstable-codegen'
+                    case 'cody.autocomplete.advanced.serverEndpoint':
+                        return 'https://example.com/llm'
+                    case 'cody.autocomplete.advanced.accessToken':
+                        return 'foobar'
+                    case 'cody.autocomplete.advanced.cache':
+                        return false
+                    case 'cody.autocomplete.advanced.embeddings':
+                        return false
                     default:
                         throw new Error(`unexpected key: ${key}`)
                 }
@@ -67,7 +83,7 @@ describe('getConfiguration', () => {
                 'Cache-Control': 'no-cache',
                 'Proxy-Authenticate': 'Basic',
             },
-            experimentalSuggest: true,
+            autocomplete: true,
             experimentalChatPredictions: true,
             experimentalGuardrails: true,
             experimentalInline: true,
@@ -75,6 +91,11 @@ describe('getConfiguration', () => {
             debugEnable: true,
             debugVerbose: true,
             debugFilter: /.*/,
+            autocompleteAdvancedProvider: 'unstable-codegen',
+            autocompleteAdvancedServerEndpoint: 'https://example.com/llm',
+            autocompleteAdvancedAccessToken: 'foobar',
+            autocompleteAdvancedCache: false,
+            autocompleteAdvancedEmbeddings: false,
         })
     })
 })

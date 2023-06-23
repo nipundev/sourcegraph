@@ -2,14 +2,16 @@ package actor
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"time"
 
 	"github.com/sourcegraph/log"
+	"go.opentelemetry.io/otel/attribute"
 
 	"github.com/sourcegraph/sourcegraph/enterprise/cmd/cody-gateway/internal/limiter"
 	"github.com/sourcegraph/sourcegraph/enterprise/cmd/cody-gateway/internal/notify"
-	"github.com/sourcegraph/sourcegraph/enterprise/internal/codygateway"
+	"github.com/sourcegraph/sourcegraph/internal/codygateway"
 )
 
 type Actor struct {
@@ -91,6 +93,29 @@ func (a *Actor) Update(ctx context.Context) {
 	}
 }
 
+func (a *Actor) TraceAttributes() []attribute.KeyValue {
+	if a == nil {
+		return []attribute.KeyValue{attribute.String("actor", "<nil>")}
+	}
+
+	attrs := []attribute.KeyValue{
+		attribute.String("actor.id", a.ID),
+		attribute.Bool("actor.accessEnabled", a.AccessEnabled),
+	}
+	if a.LastUpdated != nil {
+		attrs = append(attrs, attribute.String("actor.lastUpdated", a.LastUpdated.String()))
+	}
+	for f, rl := range a.RateLimits {
+		key := fmt.Sprintf("actor.rateLimits.%s", f)
+		if rlJSON, err := json.Marshal(rl); err != nil {
+			attrs = append(attrs, attribute.String(key, err.Error()))
+		} else {
+			attrs = append(attrs, attribute.String(key, string(rlJSON)))
+		}
+	}
+	return attrs
+}
+
 // WithActor returns a new context with the given Actor instance.
 func WithActor(ctx context.Context, a *Actor) context.Context {
 	return context.WithValue(ctx, actorKey, a)
@@ -132,8 +157,8 @@ func (a *Actor) Limiter(
 		// Only update rate limit TTL if the actor has been updated recently.
 		UpdateRateLimitTTL: a.LastUpdated != nil && time.Since(*a.LastUpdated) < 5*time.Minute,
 		NowFunc:            time.Now,
-		RateLimitAlerter: func(usagePercentage float32, ttl time.Duration) {
-			rateLimitNotifier(a.ID, codygateway.ActorSource(a.Source.Name()), feature, usagePercentage, ttl)
+		RateLimitAlerter: func(ctx context.Context, usageRatio float32, ttl time.Duration) {
+			rateLimitNotifier(ctx, a.ID, codygateway.ActorSource(a.Source.Name()), feature, usageRatio, ttl)
 		},
 	}
 

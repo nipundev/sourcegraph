@@ -1,6 +1,7 @@
 import React from 'react'
 
 import { mdiEmail } from '@mdi/js'
+import { useNavigate } from 'react-router-dom'
 
 import { TeamAvatar } from '@sourcegraph/shared/src/components/TeamAvatar'
 import { UserAvatar } from '@sourcegraph/shared/src/components/UserAvatar'
@@ -27,6 +28,7 @@ interface Props {
     repoID: string
     filePath: string
     setRemoveOwnerError: any
+    isDirectory: boolean
     refetch: any
 }
 
@@ -42,8 +44,9 @@ export const FileOwnershipEntry: React.FunctionComponent<Props> = ({
     makeOwnerButton,
     repoID,
     filePath,
-    refetch,
     setRemoveOwnerError,
+    isDirectory,
+    refetch,
 }) => {
     const findEmail = (): string | undefined => {
         if (owner.__typename !== 'Person') {
@@ -65,6 +68,17 @@ export const FileOwnershipEntry: React.FunctionComponent<Props> = ({
         .map(val => val as AssignedOwnerFields)
     const isDirectAssigned = assignedOwnerReasons.some(value => value.isDirectMatch)
     const hasAssigned = assignedOwnerReasons.length > 0
+
+    const sortReasons = () => (reason1: OwnershipReason, reason2: OwnershipReason) =>
+        getOwnershipReasonPriority(reason2) - getOwnershipReasonPriority(reason1)
+
+    const navigate = useNavigate()
+    const refresh = (): Promise<any> => {
+        if (!isDirectory) {
+            return Promise.resolve(navigate(0))
+        }
+        return Promise.resolve(refetch())
+    }
 
     return (
         <tr>
@@ -92,9 +106,12 @@ export const FileOwnershipEntry: React.FunctionComponent<Props> = ({
                 </div>
             </td>
             <td className={containerStyles.expanding}>
-                {reasons.map(reason => (
-                    <OwnershipBadge key={reason.title} reason={reason} />
-                ))}
+                {reasons
+                    .slice()
+                    .sort(sortReasons())
+                    .map(reason => (
+                        <OwnershipBadge key={reason.title} reason={reason} />
+                    ))}
             </td>
             <td className={containerStyles.fitting}>
                 <span className={containerStyles.editButtonColumn}>
@@ -102,7 +119,7 @@ export const FileOwnershipEntry: React.FunctionComponent<Props> = ({
                         {makeOwnerButton ||
                             (hasAssigned && (
                                 <RemoveOwnerButton
-                                    onSuccess={refetch}
+                                    onSuccess={refresh}
                                     onError={setRemoveOwnerError}
                                     repoId={repoID}
                                     path={filePath}
@@ -127,4 +144,19 @@ export const FileOwnershipEntry: React.FunctionComponent<Props> = ({
             </td>
         </tr>
     )
+}
+
+const getOwnershipReasonPriority = (reason: OwnershipReason): number => {
+    switch (reason.__typename ?? '') {
+        case 'CodeownersFileEntry':
+            return 4
+        case 'AssignedOwner':
+            return 3
+        case 'RecentContributorOwnershipSignal':
+            return 2
+        case 'RecentViewOwnershipSignal':
+            return 1
+        default:
+            return 0
+    }
 }

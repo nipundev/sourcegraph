@@ -15,9 +15,7 @@ export class VSCodeEditor implements Editor {
     constructor(
         public controllers: {
             inline: InlineController
-            // TODO: Rename this from "task" to "fixup" when the fixup data
-            // model moves from client/cody-shared to client/cody
-            task: FixupController
+            fixups: FixupController
         }
     ) {
         vscode.workspace.onDidChangeConfiguration(e => {
@@ -60,7 +58,13 @@ export class VSCodeEditor implements Editor {
         }
         const documentUri = activeEditor.document.uri
         const documentText = activeEditor.document.getText()
-        return { content: documentText, filePath: documentUri.fsPath }
+        const documentSelection = activeEditor.selection
+
+        return {
+            content: documentText,
+            filePath: documentUri.fsPath,
+            selection: !documentSelection.isEmpty ? documentSelection : undefined,
+        }
     }
 
     private getActiveTextEditorInstance(): vscode.TextEditor | null {
@@ -192,6 +196,6 @@ export class VSCodeEditor implements Editor {
     // TODO: When Non-Stop Fixup doesn't depend directly on the chat view,
     // move the recipe to client/cody and remove this entrypoint.
     public async didReceiveFixupText(id: string, text: string, state: 'streaming' | 'complete'): Promise<void> {
-        await this.controllers.task.didReceiveFixupText(id, text, state)
+        await this.controllers.fixups.didReceiveFixupText(id, text, state)
     }
 }

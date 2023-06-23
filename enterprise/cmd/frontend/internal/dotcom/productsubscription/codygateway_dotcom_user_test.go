@@ -21,6 +21,7 @@ import (
 	"github.com/sourcegraph/sourcegraph/internal/featureflag"
 	"github.com/sourcegraph/sourcegraph/internal/hashutil"
 	"github.com/sourcegraph/sourcegraph/internal/types"
+	"github.com/sourcegraph/sourcegraph/lib/pointers"
 	"github.com/sourcegraph/sourcegraph/schema"
 )
 
@@ -28,9 +29,13 @@ func TestCodyGatewayDotcomUserResolver(t *testing.T) {
 	var chatOverrideLimit int = 200
 	var codeOverrideLimit int = 400
 
+	tru := true
 	cfg := &conf.Unified{
 		SiteConfiguration: schema.SiteConfiguration{
+			CodyEnabled: &tru,
+			LicenseKey:  "asdf",
 			Completions: &schema.Completions{
+				Provider:                         "sourcegraph",
 				PerUserCodeCompletionsDailyLimit: 20,
 				PerUserDailyLimit:                10,
 			},
@@ -59,30 +64,30 @@ func TestCodyGatewayDotcomUserResolver(t *testing.T) {
 	// User with rate limit overrides
 	overrideUser, err := db.Users().Create(ctx, database.NewUser{Username: "override", EmailIsVerified: true, Email: "override@test.com"})
 	require.NoError(t, err)
-	err = db.Users().SetChatCompletionsQuota(context.Background(), overrideUser.ID, iPtr(chatOverrideLimit))
+	err = db.Users().SetChatCompletionsQuota(context.Background(), overrideUser.ID, pointers.Ptr(chatOverrideLimit))
 	require.NoError(t, err)
-	err = db.Users().SetCodeCompletionsQuota(context.Background(), overrideUser.ID, iPtr(codeOverrideLimit))
+	err = db.Users().SetCodeCompletionsQuota(context.Background(), overrideUser.ID, pointers.Ptr(codeOverrideLimit))
 	require.NoError(t, err)
 
 	tests := []struct {
 		name        string
 		user        *types.User
-		wantChat    int32
-		wantCode    int32
+		wantChat    graphqlbackend.BigInt
+		wantCode    graphqlbackend.BigInt
 		wantEnabled bool
 	}{
 		{
 			name:        "admin user",
 			user:        adminUser,
-			wantChat:    int32(cfg.Completions.PerUserDailyLimit),
-			wantCode:    int32(cfg.Completions.PerUserCodeCompletionsDailyLimit),
+			wantChat:    graphqlbackend.BigInt(cfg.Completions.PerUserDailyLimit),
+			wantCode:    graphqlbackend.BigInt(cfg.Completions.PerUserCodeCompletionsDailyLimit),
 			wantEnabled: true,
 		},
 		{
 			name:        "verified user default limits",
 			user:        verifiedUser,
-			wantChat:    int32(cfg.Completions.PerUserDailyLimit),
-			wantCode:    int32(cfg.Completions.PerUserCodeCompletionsDailyLimit),
+			wantChat:    graphqlbackend.BigInt(cfg.Completions.PerUserDailyLimit),
+			wantCode:    graphqlbackend.BigInt(cfg.Completions.PerUserCodeCompletionsDailyLimit),
 			wantEnabled: true,
 		},
 		{
@@ -95,8 +100,8 @@ func TestCodyGatewayDotcomUserResolver(t *testing.T) {
 		{
 			name:        "override user",
 			user:        overrideUser,
-			wantChat:    int32(chatOverrideLimit),
-			wantCode:    int32(codeOverrideLimit),
+			wantChat:    graphqlbackend.BigInt(chatOverrideLimit),
+			wantCode:    graphqlbackend.BigInt(codeOverrideLimit),
 			wantEnabled: true,
 		},
 	}
@@ -216,10 +221,6 @@ func TestCodyGatewayDotcomUserResolverRequestAccess(t *testing.T) {
 
 		})
 	}
-}
-
-func iPtr(i int) *int {
-	return &i
 }
 
 func makeGatewayToken(apiToken string) string {

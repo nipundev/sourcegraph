@@ -522,6 +522,12 @@
           "!go": {
             "pointer": true
           }
+        },
+        "batchChanges.enablePerforce": {
+          "description": "When enabled, batch changes will be executable on Perforce depots.",
+          "type": "boolean",
+          "group": "BatchChanges",
+          "default": false
         }
       },
       "examples": [
@@ -2352,12 +2358,14 @@
     "embeddings": {
       "description": "Configuration for embeddings service.",
       "type": "object",
-      "required": ["enabled"],
       "properties": {
         "enabled": {
           "description": "Toggles whether embedding service is enabled.",
           "type": "boolean",
-          "default": false
+          "!go": {
+            "pointer": true
+          },
+          "default": true
         },
         "dimensions": {
           "description": "The dimensionality of the embedding vectors. Required field if not using the sourcegraph provider.",
@@ -2392,7 +2400,20 @@
           "type": "array",
           "items": {
             "type": "string"
-          }
+          },
+          "default": [
+            ".*ignore",
+            ".gitattributes",
+            ".mailmap",
+            "*.csv",
+            "*.svg",
+            "*.xml",
+            "__fixtures__/",
+            "node_modules/",
+            "testdata/",
+            "mocks/",
+            "vendor/"
+          ]
         },
         "maxCodeEmbeddingsPerRepo": {
           "description": "The maximum number of embeddings for code files to generate per repo",
@@ -2444,7 +2465,10 @@
         "enabled": {
           "description": "DEPRECATED. Use cody.enabled instead to turn Cody on/off.",
           "type": "boolean",
-          "default": false
+          "!go": {
+            "pointer": true
+          },
+          "default": true
         },
         "model": {
           "description": "DEPRECATED. Use chatModel instead.",
@@ -2454,13 +2478,25 @@
           "description": "The model used for fast chat completions.",
           "type": "string"
         },
+        "fastChatModelMaxTokens": {
+          "description": "The maximum number of tokens to use as client when talking to fastChatModel. If not set, clients need to set their own limit.",
+          "type": "integer"
+        },
         "chatModel": {
           "description": "The model used for chat completions. If using the default provider 'sourcegraph', a reasonable default model will be set.",
           "type": "string"
         },
+        "chatModelMaxTokens": {
+          "description": "The maximum number of tokens to use as client when talking to chatModel. If not set, clients need to set their own limit.",
+          "type": "integer"
+        },
         "completionModel": {
           "description": "The model used for code completion. If using the default provider 'sourcegraph', a reasonable default model will be set.",
           "type": "string"
+        },
+        "completionModelMaxTokens": {
+          "description": "The maximum number of tokens to use as client when talking to completionModel. If not set, clients need to set their own limit.",
+          "type": "integer"
         },
         "accessToken": {
           "description": "The access token used to authenticate with the external completions provider. If using the default provider 'sourcegraph', and if 'licenseKey' is set, a default access token is generated.",
@@ -2490,7 +2526,6 @@
       "examples": [
         {
           "enabled": true,
-          "model": "code-completion",
           "chatModel": "chat",
           "completionModel": "code-completion",
           "accessToken": "abc123",

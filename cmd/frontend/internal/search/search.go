@@ -18,7 +18,6 @@ import (
 	"github.com/sourcegraph/log"
 	"go.opentelemetry.io/otel/attribute"
 
-	"github.com/sourcegraph/sourcegraph/cmd/frontend/graphqlbackend"
 	searchlogs "github.com/sourcegraph/sourcegraph/cmd/frontend/internal/search/logs"
 	"github.com/sourcegraph/sourcegraph/internal/api"
 	"github.com/sourcegraph/sourcegraph/internal/conf"
@@ -36,6 +35,7 @@ import (
 	"github.com/sourcegraph/sourcegraph/internal/trace"
 	"github.com/sourcegraph/sourcegraph/internal/types"
 	"github.com/sourcegraph/sourcegraph/lib/errors"
+	"github.com/sourcegraph/sourcegraph/lib/pointers"
 )
 
 // StreamHandler is an http handler which streams back search results.
@@ -101,7 +101,7 @@ func (h *streamHandler) serveHTTP(r *http.Request, tr *trace.Trace, eventWriter 
 	inputs, err := h.searchClient.Plan(
 		ctx,
 		args.Version,
-		strPtr(args.PatternType),
+		pointers.NonZeroPtr(args.PatternType),
 		args.Query,
 		search.Mode(args.SearchMode),
 		search.Streaming,
@@ -179,7 +179,7 @@ func (h *streamHandler) serveHTTP(r *http.Request, tr *trace.Trace, eventWriter 
 
 func logSearch(ctx context.Context, logger log.Logger, alert *search.Alert, err error, duration time.Duration, latency *time.Duration, originalQuery string, progress *streamclient.ProgressAggregator) {
 	if honey.Enabled() {
-		status := graphqlbackend.DetermineStatusForLogs(alert, progress.Stats, err)
+		status := client.DetermineStatusForLogs(alert, progress.Stats, err)
 		var alertType string
 		if alert != nil {
 			alertType = alert.PrometheusType
@@ -255,13 +255,6 @@ func parseURLQuery(q url.Values) (*args, error) {
 	}
 
 	return &a, nil
-}
-
-func strPtr(s string) *string {
-	if s == "" {
-		return nil
-	}
-	return &s
 }
 
 func fromMatch(match result.Match, repoCache map[api.RepoID]*types.SearchedRepo, enableChunkMatches bool) streamhttp.EventMatch {

@@ -77,6 +77,13 @@ A mutation.
 """
 type Mutation {
     """
+    INTERNAL ONLY: Sets the value of versions.auto_upgrade in the frontend db.
+    Determines behavior of multiversion upgrades.
+
+    Only site admins may perform this mutation.
+    """
+    setAutoUpgrade(enable: Boolean!): EmptyResponse!
+    """
     Updates the user profile information for the user with the given ID.
 
     Only the user and site admins may perform this mutation.
@@ -4129,6 +4136,10 @@ type MirrorRepositoryInfo {
     """
     lastError: String
     """
+    The output of the most recent repo sync job
+    """
+    lastSyncOutput: String
+    """
     The byte size of the repo.
     """
     byteSize: BigInt!
@@ -5509,6 +5520,10 @@ interface File2 {
     """
     canonicalURL: String!
     """
+    The URL to this file using the changelist ID if this file is inside a perforce depot.
+    """
+    changelistURL: String
+    """
     The URLs to this file on external services.
     """
     externalURLs: [ExternalLink!]!
@@ -5607,6 +5622,10 @@ type VirtualFile implements File2 {
     Not implemented.
     """
     canonicalURL: String!
+    """
+    Not impleemented.
+    """
+    changelistURL: String
     """
     Not implemented.
     """
@@ -5740,6 +5759,12 @@ type GitBlob implements TreeEntry & File2 {
     The canonical URL to this blob (using an immutable revision specifier).
     """
     canonicalURL: String!
+
+    """
+    The URL to this file using the changelist ID if this file is inside a perforce depot.
+    """
+    changelistURL: String
+
     """
     The URLs to this blob on its repository's external services.
     """
@@ -7060,6 +7085,10 @@ type Site implements SettingsSubject {
     FOR INTERNAL USE ONLY: Returns information about instance upgrade readiness.
     """
     upgradeReadiness: UpgradeReadiness!
+    """
+    FOR INTERNAL USE ONLY: The state of readiness to auto upgrade the Sourcegraph instance via migrator commands.
+    """
+    autoUpgradeEnabled: Boolean!
 
     """
     Wether the current App installation has a connected Sourcegraph.com account.
@@ -7085,6 +7114,42 @@ type Site implements SettingsSubject {
     Whether Cody is enabled for this site.
     """
     isCodyEnabled: Boolean!
+
+    """
+    If Cody is enabled, this returns how Cody is configured to talk to the LLM.
+    """
+    codyLLMConfiguration: CodyLLMConfiguration
+}
+
+"""
+Cody LLM configuration contains information about how the main LLM used by Cody
+is configured.
+"""
+type CodyLLMConfiguration {
+    """
+    Name of the model being used for chat.
+    """
+    chatModel: String!
+    """
+    Maximum number of tokens client should use when talking to the chatModel.
+    """
+    chatModelMaxTokens: Int
+    """
+    Name of the model being used for fast chat.
+    """
+    fastChatModel: String!
+    """
+    Maximum number of tokens client should use when talking to the fastChatModel.
+    """
+    fastChatModelMaxTokens: Int
+    """
+    Name of the model being used for code completions.
+    """
+    completionModel: String!
+    """
+    Maximum number of tokens client should use when talking to the completionModel.
+    """
+    completionModelMaxTokens: Int
 }
 
 """

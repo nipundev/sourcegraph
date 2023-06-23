@@ -23,6 +23,10 @@ Yes, Cody works with self-hosted Sourcegraph instances, with the caveat that sni
 
 In particular, this means the Sourcegraph instance needs to be able to access the internet.
 
+#### Is there a public facing Cody API?
+
+Not at the moment. 
+
 #### Does Cody require Sourcegraph to function?
 
 Yes. Sourcegraph is needed both to retrieve context and as a proxy for the LLM provider.
@@ -46,10 +50,16 @@ In the future, here are the steps that Sourcegraph will follow:
 
 ### Third party dependencies
 
+#### What is the default `sourcegraph` provider for completions and embeddings?
+
+The default `"provider": "sourcegraph"` for completions and embeddings is the [Sourcegraph Cody Gateway](./explanations/cody_gateway.md). Cody Gateway provides Sourcegraph enterprise instances access to completions and embeddings using third-party services like Anthropic and OpenAI.
+
 #### What third-party cloud services does Cody depend on today?
 
 - Cody has one third-party dependency, which is Anthropic's Claude API. In the config, this can be replaced with OpenAI API.
 - Cody can optionally use OpenAI to generate embeddings, that are then used to improve the quality of its context snippets, but this is not required.
+
+The above is also the case even when using [the default `sourcegraph` provider, Cody Gateway](./explanations/cody_gateway.md), which uses the same third-party providers.
 
 #### What's the retention policy for Anthropic/OpenAI?
 

@@ -118,6 +118,7 @@
     "@pollyjs/adapter": "^5.0.0",
     "@pollyjs/core": "^5.1.0",
     "@pollyjs/persister-fs": "^5.0.0",
+    "@remix-run/server-runtime": "^1.17.0",
     "@sentry/cli": "^1.74.4",
     "@sentry/webpack-plugin": "^1.20.0",
     "@slack/web-api": "^5.15.0",
@@ -170,6 +171,7 @@
     "@types/d3-shape": "^1.3.1",
     "@types/d3-time-format": "3.0.0",
     "@types/d3-voronoi": "^1.1.9",
+    "@types/dedent": "^0.7.0",
     "@types/dompurify": "^3.0.0",
     "@types/escape-html": "^1.0.1",
     "@types/express": "4.17.11",
@@ -250,6 +252,7 @@
     "cross-env": "^7.0.2",
     "css-loader": "^6.7.2",
     "css-minimizer-webpack-plugin": "^4.2.2",
+    "dedent": "^0.7.0",
     "envalid": "^7.3.1",
     "esbuild": "^0.17.14",
     "eslint": "^8.13.0",
@@ -505,7 +508,12 @@
         "dependencies": {
           "node-gyp": "*"
         }
-       },
+      },
+      "deasync": {
+        "dependencies": {
+          "node-gyp": "*"
+        }
+      },
       "cpu-features": {
         "dependencies": {
           "node-gyp": "*"
@@ -519,6 +527,7 @@
     }
   },
   "resolutions": {
+    "browserify-zlib": "0.2.0",
     "@types/webpack": "5",
     "history": "4.5.1",
     "cssnano": "4.1.10",

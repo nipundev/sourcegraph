@@ -5,15 +5,19 @@ import (
 	"fmt"
 	"math"
 
+	"github.com/graph-gophers/graphql-go"
+	"github.com/graph-gophers/graphql-go/relay"
+
 	"github.com/sourcegraph/sourcegraph/cmd/frontend/graphqlbackend"
-	"github.com/sourcegraph/sourcegraph/enterprise/internal/codygateway"
-	"github.com/sourcegraph/sourcegraph/enterprise/internal/completions/types"
 	"github.com/sourcegraph/sourcegraph/enterprise/internal/licensing"
+	"github.com/sourcegraph/sourcegraph/internal/codygateway"
+	"github.com/sourcegraph/sourcegraph/internal/completions/types"
 	"github.com/sourcegraph/sourcegraph/internal/conf"
 	"github.com/sourcegraph/sourcegraph/internal/database"
 	"github.com/sourcegraph/sourcegraph/internal/errcode"
 	dbtypes "github.com/sourcegraph/sourcegraph/internal/types"
 	"github.com/sourcegraph/sourcegraph/lib/errors"
+	"github.com/sourcegraph/sourcegraph/lib/pointers"
 )
 
 type ErrDotcomUserNotFound struct {
@@ -79,6 +83,10 @@ func (u *dotcomCodyUserResolver) Username() string {
 	return u.user.Username
 }
 
+func (u *dotcomCodyUserResolver) ID() graphql.ID {
+	return relay.MarshalID("User", u.user.ID)
+}
+
 func (u *dotcomCodyUserResolver) CodyGatewayAccess() graphqlbackend.CodyGatewayAccess {
 	return &codyUserGatewayAccessResolver{
 		db:            u.db,
@@ -134,7 +142,7 @@ func (r codyUserGatewayAccessResolver) CodeCompletionsRateLimit(ctx context.Cont
 	}, nil
 }
 
-const tokensPerDollar = int(1 / (0.0004 / 1_000))
+const tokensPerDollar = int(1 / (0.0001 / 1_000))
 
 func (r codyUserGatewayAccessResolver) EmbeddingsRateLimit(ctx context.Context) (graphqlbackend.CodyGatewayRateLimit, error) {
 	// If the user isn't enabled return no rate limit
@@ -144,7 +152,7 @@ func (r codyUserGatewayAccessResolver) EmbeddingsRateLimit(ctx context.Context) 
 
 	rateLimit := licensing.CodyGatewayRateLimit{
 		AllowedModels:   []string{"openai/text-embedding-ada-002"},
-		Limit:           int32(20 * tokensPerDollar),
+		Limit:           int64(20 * tokensPerDollar),
 		IntervalSeconds: math.MaxInt32,
 	}
 
@@ -175,26 +183,26 @@ func getCompletionsRateLimit(ctx context.Context, db database.DB, userID int32, 
 	if limit == nil {
 		source = graphqlbackend.CodyGatewayRateLimitSourcePlan
 		// Otherwise, fall back to the global limit.
-		cfg := conf.Get()
+		cfg := conf.GetCompletionsConfig(conf.Get().SiteConfig())
 		switch scope {
 		case types.CompletionsFeatureChat:
-			if cfg.Completions != nil && cfg.Completions.PerUserDailyLimit > 0 {
-				limit = iPtr(cfg.Completions.PerUserDailyLimit)
+			if cfg != nil && cfg.PerUserDailyLimit > 0 {
+				limit = pointers.Ptr(cfg.PerUserDailyLimit)
 			}
 		case types.CompletionsFeatureCode:
-			if cfg.Completions != nil && cfg.Completions.PerUserCodeCompletionsDailyLimit > 0 {
-				limit = iPtr(cfg.Completions.PerUserCodeCompletionsDailyLimit)
+			if cfg != nil && cfg.PerUserCodeCompletionsDailyLimit > 0 {
+				limit = pointers.Ptr(cfg.PerUserCodeCompletionsDailyLimit)
 			}
 		default:
 			return licensing.CodyGatewayRateLimit{}, graphqlbackend.CodyGatewayRateLimitSourcePlan, errors.Newf("unknown scope: %s", scope)
 		}
 	}
 	if limit == nil {
-		limit = iPtr(0)
+		limit = pointers.Ptr(0)
 	}
 	return licensing.CodyGatewayRateLimit{
 		AllowedModels:   allowedModels(scope),
-		Limit:           int32(*limit),
+		Limit:           int64(*limit),
 		IntervalSeconds: 86400, // Daily limit TODO(davejrt)
 	}, source, nil
 }
@@ -208,8 +216,4 @@ func allowedModels(scope types.CompletionsFeature) []string {
 	default:
 		return []string{}
 	}
-}
-
-func iPtr(i int) *int {
-	return &i
 }

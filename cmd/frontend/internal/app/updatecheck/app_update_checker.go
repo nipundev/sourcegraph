@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
 
 	"cloud.google.com/go/storage"
@@ -29,6 +30,12 @@ const ManifestBucketDev = "sourcegraph-app-dev"
 
 // ManifestName is the name of the manifest object that is in the ManifestBucket
 const ManifestName = "app.update.prod.manifest.json"
+
+// noUpdateConstraint clients on or prior to this version are using the "Sourcegraph App" version, which is the version prior to the
+// "Cody App" version which does not have search. Therefore, clients that match this constraint should be told that there is NOT a
+// new version for them to update to with the Tauri updater. Instead we will notify them with a banner in the app - which is not
+// part of the Tauri updater.
+var noUpdateConstraint = mustConstraint("<= 2023.6.13")
 
 type AppVersion struct {
 	Target  string
@@ -231,6 +238,11 @@ func readClientAppVersion(reqURL *url.URL) *AppVersion {
 		}
 	}
 
+	// The app versions contain '+' and Tauri is not encoding the updater url
+	// this is being interpreted as a blank space and breaking the semver check.
+	// Trimming all leading/trailing spaces then replacing spaces with '+' to get auto updates working.
+	appClientVersion.Version = strings.ReplaceAll(strings.TrimSpace(appClientVersion.Version), " ", "+")
+
 	return &appClientVersion
 }
 
@@ -242,6 +254,11 @@ func (checker *AppUpdateChecker) canUpdate(client *AppVersion, manifest *AppUpda
 	manifestVersion, err := semver.NewVersion(manifest.Version)
 	if err != nil {
 		return false, err
+	}
+
+	// no updates for clients that match this constraint!
+	if noUpdateConstraint.Check(clientVersion) {
+		return false, nil
 	}
 
 	// if the manifest version is higher than then the clientVersion, then the client can upgrade
@@ -268,4 +285,13 @@ func AppUpdateHandler(logger log.Logger) http.HandlerFunc {
 	} else {
 		return NewAppUpdateChecker(logger, resolver).Handler()
 	}
+}
+
+func mustConstraint(c string) *semver.Constraints {
+	constraint, err := semver.NewConstraint(c)
+	if err != nil {
+		panic(fmt.Sprintf("invalid constraint %q: %v", c, err))
+	}
+
+	return constraint
 }

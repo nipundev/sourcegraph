@@ -1,7 +1,7 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react'
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 
 import { mdiPlus } from '@mdi/js'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useLocation, useNavigate, useParams } from 'react-router-dom'
 
 import { Timestamp } from '@sourcegraph/branded/src/components/Timestamp'
 import { logger } from '@sourcegraph/common'
@@ -18,7 +18,7 @@ import {
     SummaryContainer,
 } from '../../../../components/FilteredConnection/ui'
 import { PageTitle } from '../../../../components/PageTitle'
-import { useFeatureFlag } from '../../../../featureFlags/useFeatureFlag'
+import { useScrollToLocationHash } from '../../../../components/useScrollToLocationHash'
 import {
     DotComProductSubscriptionResult,
     DotComProductSubscriptionVariables,
@@ -103,9 +103,6 @@ export const SiteAdminProductSubscriptionPage: React.FunctionComponent<React.Pro
         setShowGenerate(false)
     }, [refetch, refetchRef])
 
-    // Feature flag only used as this is under development - will be enabled by default
-    const [codyGatewayMananagementUI] = useFeatureFlag('cody-gateway-management-ui')
-
     if (loading && !data) {
         return <LoadingSpinner />
     }
@@ -181,17 +178,15 @@ export const SiteAdminProductSubscriptionPage: React.FunctionComponent<React.Pro
                     </table>
                 </Container>
 
-                {codyGatewayMananagementUI && (
-                    <CodyServicesSection
-                        viewerCanAdminister={true}
-                        currentSourcegraphAccessToken={productSubscription.currentSourcegraphAccessToken}
-                        accessTokenError={errorForPath(error, accessTokenPath)}
-                        codyGatewayAccess={productSubscription.codyGatewayAccess}
-                        productSubscriptionID={productSubscription.id}
-                        productSubscriptionUUID={subscriptionUUID}
-                        refetchSubscription={refetch}
-                    />
-                )}
+                <CodyServicesSection
+                    viewerCanAdminister={true}
+                    currentSourcegraphAccessToken={productSubscription.currentSourcegraphAccessToken}
+                    accessTokenError={errorForPath(error, accessTokenPath)}
+                    codyGatewayAccess={productSubscription.codyGatewayAccess}
+                    productSubscriptionID={productSubscription.id}
+                    productSubscriptionUUID={subscriptionUUID}
+                    refetchSubscription={refetch}
+                />
 
                 <H3 className="d-flex align-items-center mt-5">
                     Licenses
@@ -234,6 +229,15 @@ const ProductSubscriptionLicensesConnection: React.FunctionComponent<{
         setRefetch(refetchAll)
     }, [setRefetch, refetchAll])
 
+    const location = useLocation()
+    const licenseIDFromLocationHash = useMemo(() => {
+        if (location.hash.length > 1) {
+            return decodeURIComponent(location.hash.slice(1))
+        }
+        return
+    }, [location.hash])
+    useScrollToLocationHash(location)
+
     return (
         <ConnectionContainer>
             {error && <ConnectionError errors={[error.message]} />}
@@ -243,6 +247,7 @@ const ProductSubscriptionLicensesConnection: React.FunctionComponent<{
                     <SiteAdminProductLicenseNode
                         key={node.id}
                         node={node}
+                        defaultExpanded={node.id === licenseIDFromLocationHash}
                         showSubscription={false}
                         onRevokeCompleted={refetchAll}
                     />

@@ -3,6 +3,18 @@ export interface ActiveTextEditor {
     filePath: string
     repoName?: string
     revision?: string
+    selection?: ActiveTextEditorSelectionRange
+}
+
+export interface ActiveTextEditorSelectionRange {
+    start: {
+        line: number
+        character: number
+    }
+    end: {
+        line: number
+        character: number
+    }
 }
 
 export interface ActiveTextEditorSelection {
@@ -26,16 +38,22 @@ interface VsCodeInlineController {
     error(): Promise<void>
 }
 
-// TODO: Move this interface to client/cody
-interface VsCodeTaskController {
-    add(input: string, selection: ActiveTextEditorSelection): string | null
-    stop(taskID: string): void
+interface VsCodeFixupController {
+    getTaskRecipeData(taskId: string): Promise<
+        | {
+              instruction: string
+              fileName: string
+              precedingText: string
+              selectedText: string
+              followingText: string
+          }
+        | undefined
+    >
 }
 
 export interface ActiveTextEditorViewControllers {
     inline: VsCodeInlineController
-    // TODO: Remove this field once the fixup task view moves to client/cody
-    task: VsCodeTaskController
+    fixups: VsCodeFixupController
 }
 
 export interface Editor {

@@ -11,9 +11,6 @@ import { getConfiguration } from './configuration'
 
 const outputChannel: vscode.OutputChannel = vscode.window.createOutputChannel('Cody AI by Sourcegraph', 'json')
 
-const workspaceConfig = vscode.workspace.getConfiguration()
-const config = getConfiguration(workspaceConfig)
-
 /**
  * Logs text for debugging purposes to the "Cody AI by Sourcegraph" output channel.
  *
@@ -30,6 +27,9 @@ const config = getConfiguration(workspaceConfig)
  * debug('label', 'this is a message', 'some', 'args', { verbose: 'verbose info goes here' })
  */
 export function debug(filterLabel: string, text: string, ...args: unknown[]): void {
+    const workspaceConfig = vscode.workspace.getConfiguration()
+    const config = getConfiguration(workspaceConfig)
+
     if (!outputChannel || !config.debugEnable) {
         return
     }
@@ -59,13 +59,16 @@ export function debug(filterLabel: string, text: string, ...args: unknown[]): vo
 }
 
 export const logger: CompletionLogger = {
-    startCompletion(params: CompletionParameters) {
+    startCompletion(params: CompletionParameters | {}) {
+        const workspaceConfig = vscode.workspace.getConfiguration()
+        const config = getConfiguration(workspaceConfig)
+
         if (!config.debugEnable) {
             return undefined
         }
 
         const start = Date.now()
-        const type = 'prompt' in params ? 'code-completion' : 'completion'
+        const type = 'prompt' in params ? 'code-completion' : 'messages' in params ? 'completion' : 'code-completion'
         let hasFinished = false
         let lastCompletion = ''
 
@@ -86,7 +89,7 @@ export const logger: CompletionLogger = {
             )
         }
 
-        function onComplete(result: string | CompletionResponse): void {
+        function onComplete(result: string | CompletionResponse | string[] | CompletionResponse[]): void {
             if (hasFinished) {
                 return
             }

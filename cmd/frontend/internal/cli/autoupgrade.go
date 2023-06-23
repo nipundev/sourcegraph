@@ -3,26 +3,17 @@ package cli
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
-	"net/http"
 	"os"
 	"time"
 
-	gcontext "github.com/gorilla/context"
-	"github.com/gorilla/mux"
+	"github.com/jackc/pgerrcode"
 	"github.com/keegancsmith/sqlf"
 
 	"github.com/sourcegraph/log"
 
-	"github.com/sourcegraph/sourcegraph/cmd/frontend/internal/app/assetsutil"
-	"github.com/sourcegraph/sourcegraph/cmd/frontend/internal/httpapi"
-	apirouter "github.com/sourcegraph/sourcegraph/cmd/frontend/internal/httpapi/router"
-	"github.com/sourcegraph/sourcegraph/internal/conf"
-	"github.com/sourcegraph/sourcegraph/internal/conf/conftypes"
 	"github.com/sourcegraph/sourcegraph/internal/database"
 	"github.com/sourcegraph/sourcegraph/internal/database/basestore"
 	connections "github.com/sourcegraph/sourcegraph/internal/database/connections/live"
-	"github.com/sourcegraph/sourcegraph/internal/database/dbconn"
 	"github.com/sourcegraph/sourcegraph/internal/database/migration"
 	"github.com/sourcegraph/sourcegraph/internal/database/migration/cliutil"
 	"github.com/sourcegraph/sourcegraph/internal/database/migration/multiversion"
@@ -30,8 +21,6 @@ import (
 	"github.com/sourcegraph/sourcegraph/internal/database/migration/schemas"
 	"github.com/sourcegraph/sourcegraph/internal/database/migration/store"
 	"github.com/sourcegraph/sourcegraph/internal/database/postgresdsn"
-	"github.com/sourcegraph/sourcegraph/internal/goroutine"
-	"github.com/sourcegraph/sourcegraph/internal/httpserver"
 	"github.com/sourcegraph/sourcegraph/internal/observation"
 	"github.com/sourcegraph/sourcegraph/internal/oobmigration"
 	"github.com/sourcegraph/sourcegraph/internal/oobmigration/migrations"
@@ -40,7 +29,6 @@ import (
 	"github.com/sourcegraph/sourcegraph/internal/version/upgradestore"
 	"github.com/sourcegraph/sourcegraph/lib/errors"
 	"github.com/sourcegraph/sourcegraph/lib/output"
-	"github.com/sourcegraph/sourcegraph/schema"
 )
 
 const appName = "frontend-autoupgrader"
@@ -63,7 +51,7 @@ func tryAutoUpgrade(ctx context.Context, obsvCtx *observation.Context, ready ser
 
 	currentVersionStr, dbShouldAutoUpgrade, err := upgradestore.GetAutoUpgrade(ctx)
 	// fresh instance
-	if errors.Is(err, sql.ErrNoRows) {
+	if errors.Is(err, sql.ErrNoRows) || errors.HasPostgresCode(err, pgerrcode.UndefinedTable) {
 		return nil
 	} else if err != nil {
 		return errors.Wrap(err, "autoupgradestore.GetAutoUpgrade")
@@ -72,9 +60,20 @@ func tryAutoUpgrade(ctx context.Context, obsvCtx *observation.Context, ready ser
 		return nil
 	}
 
-	currentVersion, ok := oobmigration.NewVersionFromString(currentVersionStr)
+	currentVersion, currentPatch, ok := oobmigration.NewVersionAndPatchFromString(currentVersionStr)
 	if !ok {
 		return errors.Newf("unexpected string for desired instance schema version, skipping auto-upgrade (%s)", currentVersionStr)
+	}
+
+	toVersionStr := version.Version()
+	toVersion, toPatch, ok := oobmigration.NewVersionAndPatchFromString(toVersionStr)
+	if !ok {
+		obsvCtx.Logger.Warn("unexpected string for desired instance schema version, skipping auto-upgrade", log.String("version", toVersionStr))
+		return nil
+	}
+
+	if oobmigration.CompareVersions(currentVersion, toVersion) == oobmigration.VersionOrderEqual && currentPatch >= toPatch {
+		return nil
 	}
 
 	stopFunc, err := serveInternalServer(obsvCtx)
@@ -83,7 +82,7 @@ func tryAutoUpgrade(ctx context.Context, obsvCtx *observation.Context, ready ser
 	}
 	defer stopFunc()
 
-	stopFunc, err = serveExternalServer(db)
+	stopFunc, err = serveExternalServer(obsvCtx, sqlDB, db)
 	if err != nil {
 		return errors.Wrap(err, "failed to start UI & healthcheck server")
 	}
@@ -91,25 +90,19 @@ func tryAutoUpgrade(ctx context.Context, obsvCtx *observation.Context, ready ser
 
 	ready()
 
-	if err := blockForDisconnects(ctx, obsvCtx.Logger, db); err != nil {
-		return errors.Wrap(err, "error blocking on postgres client disconnects")
-	}
-
-	toVersion, ok := oobmigration.NewVersionFromString(version.Version())
-	if !ok {
-		obsvCtx.Logger.Warn("unexpected string for desired instance schema version, skipping auto-upgrade", log.String("version", version.Version()))
-		return nil
-	}
-
 	if err := upgradestore.EnsureUpgradeTable(ctx); err != nil {
 		return errors.Wrap(err, "autoupgradestore.EnsureUpgradeTable")
 	}
 
-	stillNeedsUpgrade, err := claimAutoUpgradeLock(ctx, obsvCtx, upgradestore, toVersion)
+	stillNeedsMVU, err := claimAutoUpgradeLock(ctx, obsvCtx, db, toVersion)
 	if err != nil {
 		return err
 	}
-	if !stillNeedsUpgrade {
+	if !stillNeedsMVU {
+		// may not need an MVU (major/minor versions match), but still need to update for patch version difference
+		if oobmigration.CompareVersions(currentVersion, toVersion) == oobmigration.VersionOrderEqual && currentPatch < toPatch {
+			return finalMileMigrations(obsvCtx)
+		}
 		return nil
 	}
 
@@ -122,7 +115,20 @@ func tryAutoUpgrade(ctx context.Context, obsvCtx *observation.Context, ready ser
 		}
 	}()
 
-	if err := runMigration(ctx, obsvCtx, currentVersion, toVersion, db, hook); err != nil {
+	stopHeartbeat, err := heartbeatLoop(obsvCtx.Logger, db)
+	if err != nil {
+		return err
+	}
+	defer stopHeartbeat()
+
+	plan, err := planMigration(currentVersion, toVersion)
+	if err != nil {
+		return errors.Wrap(err, "error planning auto-upgrade")
+	}
+	if err := upgradestore.SetUpgradePlan(ctx, multiversion.SerializeUpgradePlan(plan)); err != nil {
+		return errors.Wrap(err, "error updating auto-upgrade plan")
+	}
+	if err := runMigration(ctx, obsvCtx, plan, db, hook); err != nil {
 		return errors.Wrap(err, "error during auto-upgrade")
 	}
 
@@ -139,28 +145,32 @@ func tryAutoUpgrade(ctx context.Context, obsvCtx *observation.Context, ready ser
 	return nil
 }
 
-func runMigration(ctx context.Context,
-	obsvCtx *observation.Context,
-	from,
-	to oobmigration.Version,
-	db database.DB,
-	enterpriseMigratorsHook store.RegisterMigratorsUsingConfAndStoreFactoryFunc,
-) error {
+func planMigration(from, to oobmigration.Version) (multiversion.MigrationPlan, error) {
 	versionRange, err := oobmigration.UpgradeRange(from, to)
 	if err != nil {
-		return err
+		return multiversion.MigrationPlan{}, err
 	}
 
 	interrupts, err := oobmigration.ScheduleMigrationInterrupts(from, to)
 	if err != nil {
-		return err
+		return multiversion.MigrationPlan{}, err
 	}
 
 	plan, err := multiversion.PlanMigration(from, to, versionRange, interrupts)
 	if err != nil {
-		return err
+		return multiversion.MigrationPlan{}, err
 	}
 
+	return plan, nil
+}
+
+func runMigration(
+	ctx context.Context,
+	obsvCtx *observation.Context,
+	plan multiversion.MigrationPlan,
+	db database.DB,
+	enterpriseMigratorsHook store.RegisterMigratorsUsingConfAndStoreFactoryFunc,
+) error {
 	registerMigrators := store.ComposeRegisterMigratorsFuncs(
 		migrations.RegisterOSSMigratorsUsingConfAndStoreFactory,
 		enterpriseMigratorsHook,
@@ -195,6 +205,8 @@ func runMigration(ctx context.Context,
 	)
 }
 
+type dialer func(_ *observation.Context, dsn string, appName string) (*sql.DB, error)
+
 // performs the role of `migrator up`, applying any migrations in the patch versions between the minor version we're at (that `upgrade` brings you to)
 // and the patch version we desire to be at.
 func finalMileMigrations(obsvCtx *observation.Context) error {
@@ -202,13 +214,18 @@ func finalMileMigrations(obsvCtx *observation.Context) error {
 	if err != nil {
 		return err
 	}
-	schemas := []string{"frontend", "codeintel", "codeinsights"}
-	for i, fn := range []func(_ *observation.Context, dsn string, appName string) (*sql.DB, error){
-		connections.MigrateNewFrontendDB, connections.MigrateNewCodeIntelDB, connections.MigrateNewCodeInsightsDB,
-	} {
-		sqlDB, err := fn(obsvCtx, dsns[schemas[i]], "frontend")
+
+	migratorsBySchema := map[string]dialer{
+		"frontend":     connections.MigrateNewFrontendDB,
+		"codeintel":    connections.MigrateNewCodeIntelDB,
+		"codeinsights": connections.MigrateNewCodeInsightsDB,
+	}
+	for schema, migrateLastMile := range migratorsBySchema {
+		obsvCtx.Logger.Info("Running last-mile migrations", log.String("schema", schema))
+
+		sqlDB, err := migrateLastMile(obsvCtx, dsns[schema], appName)
 		if err != nil {
-			return errors.Wrapf(err, "failed to perform last-mile migration for %s schema", schemas[i])
+			return errors.Wrapf(err, "failed to perform last-mile migration for %s schema", schema)
 		}
 		sqlDB.Close()
 	}
@@ -216,15 +233,14 @@ func finalMileMigrations(obsvCtx *observation.Context) error {
 	return nil
 }
 
-type UpgradeStore interface {
-	GetServiceVersion(ctx context.Context) (string, bool, error)
-	ClaimAutoUpgrade(ctx context.Context, from, to string) (claimed bool, err error)
-}
-
 // claims a "lock" to prevent other frontends from attempting to autoupgrade concurrently, looping while the lock couldn't be claimed until either
 // 1) the version is where we want to be at or
 // 2) the lock was claimed by us
-func claimAutoUpgradeLock(ctx context.Context, obsvCtx *observation.Context, upgradestore UpgradeStore, toVersion oobmigration.Version) (stillNeedsUpgrade bool, err error) {
+// and
+// there are no named connections in pg_stat_activity besides frontend-autoupgrader.
+func claimAutoUpgradeLock(ctx context.Context, obsvCtx *observation.Context, db database.DB, toVersion oobmigration.Version) (stillNeedsUpgrade bool, err error) {
+	upgradestore := upgradestore.New(db)
+
 	// try to claim
 	for {
 		obsvCtx.Logger.Info("attempting to claim autoupgrade lock")
@@ -244,12 +260,30 @@ func claimAutoUpgradeLock(ctx context.Context, obsvCtx *observation.Context, upg
 			return false, nil
 		}
 
-		claimed, err := upgradestore.ClaimAutoUpgrade(ctx, currentVersionStr, version.Version())
+		// we want to block until all named connections (which we make use of) besides 'frontend-autoupgrader' are no longer connected,
+		// so that:
+		// 1) we know old frontends are retired and not coming back (due to new frontends running health/ready server)
+		// 2) dependent services have picked up the magic DSN and restarted
+		// TODO: can we surface this in the UI?
+		remainingConnections, err := checkForDisconnects(ctx, obsvCtx.Logger, db)
+		if err != nil {
+			return false, err
+		}
+		if len(remainingConnections) > 0 {
+			obsvCtx.Logger.Warn("named postgres connections found, waiting for them to shutdown, manually shutdown any unexpected ones", log.Strings("applications", remainingConnections))
+
+			time.Sleep(time.Second * 10)
+
+			continue
+		}
+
+		claimed, err := upgradestore.ClaimAutoUpgrade(ctx, currentVersionStr, toVersion.String())
 		if err != nil {
 			return false, errors.Wrap(err, "autoupgradstore.ClaimAutoUpgrade")
 		}
 
 		if claimed {
+			obsvCtx.Logger.Info("claimed autoupgrade lock")
 			return true, nil
 		}
 
@@ -259,105 +293,48 @@ func claimAutoUpgradeLock(ctx context.Context, obsvCtx *observation.Context, upg
 	}
 }
 
-func serveInternalServer(obsvCtx *observation.Context) (context.CancelFunc, error) {
-	middleware := httpapi.JsonMiddleware(&httpapi.ErrorHandler{
-		Logger:       obsvCtx.Logger,
-		WriteErrBody: true,
-	})
+const heartbeatInterval = time.Second * 10
 
-	serveMux := http.NewServeMux()
+func heartbeatLoop(logger log.Logger, db database.DB) (func(), error) {
+	upgradestore := upgradestore.New(db)
 
-	internalRouter := mux.NewRouter().PathPrefix("/.internal").Subrouter()
-	internalRouter.StrictSlash(true)
-	internalRouter.Path("/configuration").Methods("POST").Name(apirouter.Configuration)
-	internalRouter.Get(apirouter.Configuration).Handler(middleware(func(w http.ResponseWriter, r *http.Request) error {
-		configuration := conf.Unified{
-			SiteConfiguration: schema.SiteConfiguration{},
-			ServiceConnectionConfig: conftypes.ServiceConnections{
-				PostgresDSN:          dbconn.MigrationInProgressSentinelDSN,
-				CodeIntelPostgresDSN: dbconn.MigrationInProgressSentinelDSN,
-				CodeInsightsDSN:      dbconn.MigrationInProgressSentinelDSN,
-			},
-		}
-		b, _ := json.Marshal(configuration.SiteConfiguration)
-		raw := conftypes.RawUnified{
-			Site:               string(b),
-			ServiceConnections: configuration.ServiceConnections(),
-		}
-		return json.NewEncoder(w).Encode(raw)
-	}))
-
-	serveMux.Handle("/.internal/", internalRouter)
-
-	h := gcontext.ClearHandler(serveMux)
-	h = healthCheckMiddleware(h)
-
-	server := &http.Server{
-		Handler:      h,
-		ReadTimeout:  30 * time.Second,
-		WriteTimeout: 30 * time.Second,
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
+	defer cancel()
+	if err := upgradestore.Heartbeat(ctx); err != nil {
+		return nil, errors.Wrap(err, "error executing autoupgrade heartbeat")
 	}
-	listener, err := httpserver.NewListener(httpAddrInternal)
-	if err != nil {
-		return nil, err
-	}
-	confServer := httpserver.New(listener, server)
 
-	goroutine.Go(func() {
-		confServer.Start()
-	})
+	ticker := time.NewTicker(heartbeatInterval)
+	done := make(chan struct{})
+	go func() {
+		for {
+			select {
+			case <-done:
+				return
+			case <-ticker.C:
+				func() {
+					ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
+					defer cancel()
+					if err := upgradestore.Heartbeat(ctx); err != nil {
+						logger.Error("error executing autoupgrade heartbeat", log.Error(err))
+					}
+				}()
+			}
+		}
+	}()
 
-	return confServer.Stop, nil
+	return func() { ticker.Stop(); close(done) }, nil
 }
 
-func serveExternalServer(db database.DB) (context.CancelFunc, error) {
-	serveMux := http.NewServeMux()
-
-	serveMux.Handle("/.assets/", http.StripPrefix("/.assets", secureHeadersMiddleware(assetsutil.NewAssetHandler(serveMux), crossOriginPolicyAssets)))
-	serveMux.HandleFunc("/", makeUpgradeProgressHandler(db))
-	h := gcontext.ClearHandler(serveMux)
-	h = healthCheckMiddleware(h)
-
-	server := &http.Server{
-		Handler:      h,
-		ReadTimeout:  30 * time.Second,
-		WriteTimeout: 30 * time.Second,
-	}
-	listener, err := httpserver.NewListener(httpAddr)
-	if err != nil {
-		return nil, err
-	}
-	confServer := httpserver.New(listener, server)
-
-	goroutine.Go(func() {
-		confServer.Start()
-	})
-
-	return confServer.Stop, nil
-}
-
-// we want to block until all named connections (which we make use of) besides 'frontend-autoupgrader' are no longer connected,
-// so that:
-// 1) we know old frontends are retired and not coming back (due to new frontends running health/ready server)
-// 2) dependent services have picked up the magic DSN and restarted
-// TODO: can we surface this in the UI?
-func blockForDisconnects(ctx context.Context, logger log.Logger, db database.DB) error {
-	for {
-		query := sqlf.Sprintf(`SELECT DISTINCT(application_name) FROM pg_stat_activity
+func checkForDisconnects(ctx context.Context, _ log.Logger, db database.DB) (remaining []string, err error) {
+	query := sqlf.Sprintf(`SELECT DISTINCT(application_name) FROM pg_stat_activity
 			WHERE application_name <> '' AND application_name <> %s AND application_name <> 'psql'`,
-			appName)
-		store := basestore.NewWithHandle(db.Handle())
-		applications, err := basestore.ScanStrings(store.Query(ctx, query))
-		if err != nil {
-			return err
-		}
-
-		if len(applications) == 0 {
-			return nil
-		}
-
-		logger.Warn("named postgres connections found, waiting for them to shutdown, manually shutdown any unexpected ones", log.Strings("applications", applications))
-
-		time.Sleep(time.Second * 10)
+		appName)
+	store := basestore.NewWithHandle(db.Handle())
+	remaining, err = basestore.ScanStrings(store.Query(ctx, query))
+	if err != nil {
+		return nil, err
 	}
+
+	return remaining, nil
 }

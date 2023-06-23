@@ -12,7 +12,6 @@ go_library(
     importpath = "github.com/sourcegraph/sourcegraph/cmd/frontend/internal/search",
     visibility = ["//cmd/frontend:__subpackages__"],
     deps = [
-        "//cmd/frontend/graphqlbackend",
         "//cmd/frontend/internal/highlight",
         "//cmd/frontend/internal/search/logs",
         "//internal/api",
@@ -34,6 +33,7 @@ go_library(
         "//internal/trace",
         "//internal/types",
         "//lib/errors",
+        "//lib/pointers",
         "@com_github_inconshreveable_log15//:log15",
         "@com_github_prometheus_client_golang//prometheus",
         "@com_github_prometheus_client_golang//prometheus/promauto",

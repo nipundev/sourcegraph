@@ -3,16 +3,16 @@ import { ConfigurationWithAccessToken } from '../../configuration'
 import { Event, CompletionCallbacks, CompletionParameters, CompletionResponse } from './types'
 
 export interface CompletionLogger {
-    startCompletion(params: CompletionParameters):
+    startCompletion(params: CompletionParameters | {}):
         | undefined
         | {
               onError: (error: string) => void
-              onComplete: (response: string | CompletionResponse) => void
+              onComplete: (response: string | CompletionResponse | string[] | CompletionResponse[]) => void
               onEvents: (events: Event[]) => void
           }
 }
 
-export type Config = Pick<
+export type CompletionsClientConfig = Pick<
     ConfigurationWithAccessToken,
     'serverEndpoint' | 'accessToken' | 'debugEnable' | 'customHeaders'
 >
@@ -20,9 +20,9 @@ export type Config = Pick<
 export abstract class SourcegraphCompletionsClient {
     private errorEncountered = false
 
-    constructor(protected config: Config, protected logger?: CompletionLogger) {}
+    constructor(protected config: CompletionsClientConfig, protected logger?: CompletionLogger) {}
 
-    public onConfigurationChange(newConfig: Config): void {
+    public onConfigurationChange(newConfig: CompletionsClientConfig): void {
         this.config = newConfig
     }
 
