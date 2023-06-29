@@ -33,21 +33,18 @@ import { getRerankWithLog } from '../logged-rerank'
 import { FixupTask } from '../non-stop/FixupTask'
 import { IdleRecipeRunner } from '../non-stop/roles'
 import { AuthProvider } from '../services/AuthProvider'
-import { LocalAppDetector } from '../services/LocalAppDetector'
 import { LocalStorage } from '../services/LocalStorageProvider'
 import { SecretStorage } from '../services/SecretStorageProvider'
 import { TestSupport } from '../test-support'
 
 import { fastFilesExist } from './fastFileFinder'
 import {
-    AuthStatus,
     ConfigurationSubsetForWebview,
     DOTCOM_URL,
     ExtensionMessage,
     WebviewMessage,
     defaultAuthStatus,
     LocalEnv,
-    LOCAL_APP_URL,
 } from './protocol'
 import { getRecipe } from './recipes'
 import { convertGitCloneURLToCodebaseName } from './utils'
@@ -69,7 +66,7 @@ export type Config = Pick<
 export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disposable, IdleRecipeRunner {
     private isMessageInProgress = false
     private cancelCompletionCallback: (() => void) | null = null
-    private webview?: Omit<vscode.Webview, 'postMessage'> & {
+    public webview?: Omit<vscode.Webview, 'postMessage'> & {
         postMessage(message: ExtensionMessage): Thenable<boolean>
     }
 
@@ -89,8 +86,6 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
 
     // Codebase-context-related state
     private currentWorkspaceRoot: string
-
-    private localAppDetector: LocalAppDetector
 
     constructor(
         private extensionPath: string,
@@ -117,12 +112,12 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
         this.disposables.push(
             vscode.window.onDidChangeActiveTextEditor(async () => {
                 await this.updateCodebaseContext()
-            })
+            }),
+            vscode.workspace.onDidChangeWorkspaceFolders(async () => {
+                await this.updateCodebaseContext()
+            }),
+            vscode.commands.registerCommand('cody.auth.sync', () => this.syncAuthStatus())
         )
-
-        this.localAppDetector = new LocalAppDetector({ onChange: token => this.sendLocalAppState(token) })
-        this.disposables.push(this.localAppDetector)
-
         const codyConfig = vscode.workspace.getConfiguration('cody')
         const tokenLimit = codyConfig.get<number>('provider.limit.prompt')
         const solutionLimit = codyConfig.get<number>('provider.limit.solution') || SOLUTION_TOKEN_LENGTH
@@ -176,7 +171,12 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
     }
 
     public onConfigurationChange(newConfig: Config): void {
+        debug('ChatViewProvider:onConfigurationChange', '')
         this.config = newConfig
+        const authStatus = this.authProvider.getAuthStatus()
+        if (authStatus.endpoint) {
+            this.config.serverEndpoint = authStatus.endpoint
+        }
         this.configurationChangeEvent.fire()
     }
 
@@ -217,14 +217,18 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
 
     private async onDidReceiveMessage(message: WebviewMessage): Promise<void> {
         switch (message.command) {
+            case 'ready':
+                // The web view is ready to receive events. We need to make sure that it has an up
+                // to date config, even if it was already published
+                await this.authProvider.announceNewAuthStatus()
+                break
             case 'initialized':
                 debug('ChatViewProvider:onDidReceiveMessage:initialized', '')
                 this.loadChatHistory()
-                this.publishContextStatus()
-                this.publishConfig()
                 this.sendTranscript()
                 this.sendChatHistory()
                 await this.loadRecentChat()
+                await this.publishContextStatus()
                 break
             case 'submit':
                 await this.onHumanMessageSubmitted(message.text, message.submitType)
@@ -242,13 +246,20 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
                 await this.executeRecipe(message.recipe)
                 break
             case 'auth':
+                if (message.type === 'app' && message.endpoint) {
+                    await this.authProvider.appAuth(message.endpoint)
+                    break
+                }
+                if (message.type === 'callback' && message.endpoint) {
+                    await this.authProvider.redirectToEndpointLogin(message.endpoint)
+                    break
+                }
                 // cody.auth.signin or cody.auth.signout
                 await vscode.commands.executeCommand(`cody.auth.${message.type}`)
                 break
-            case 'settings': {
+            case 'settings':
                 await this.authProvider.auth(message.serverEndpoint, message.accessToken, this.config.customHeaders)
                 break
-            }
             case 'insert':
                 await vscode.commands.executeCommand('cody.inline.insert', message.text)
                 break
@@ -372,7 +383,9 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
                         this.config.customHeaders
                     )
                 }
-                this.onCompletionEnd()
+                // We ignore embeddings errors in this instance because we're already showing an
+                // error message and don't want to overwhelm the user.
+                this.onCompletionEnd(true)
                 void this.editor.controllers.inline.error()
                 console.error(`Completion request failed: ${err}`)
             },
@@ -384,14 +397,16 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
         this.cancelCompletionCallback = null
     }
 
-    private onCompletionEnd(): void {
+    private onCompletionEnd(ignoreEmbeddingsError: boolean = false): void {
         this.isMessageInProgress = false
         this.cancelCompletionCallback = null
         this.sendTranscript()
         void this.saveTranscriptToChatHistory()
         this.sendChatHistory()
         void vscode.commands.executeCommand('setContext', 'cody.reply.pending', false)
-        this.logEmbeddingsSearchErrors()
+        if (!ignoreEmbeddingsError) {
+            this.logEmbeddingsSearchErrors()
+        }
         this.scheduleIdleRecipes()
     }
 
@@ -441,7 +456,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
         }
 
         this.codebaseContext = codebaseContext
-        this.publishContextStatus()
+        await this.publishContextStatus()
     }
 
     public async executeRecipe(recipeId: RecipeID, humanChatInput: string = '', showTab = true): Promise<void> {
@@ -624,14 +639,17 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
      * Save, verify, and sync authStatus between extension host and webview
      * activate extension when user has valid login
      */
-    public async syncAuthStatus(authStatus: AuthStatus): Promise<void> {
-        if (authStatus.isLoggedIn) {
-            void this.publishConfig()
+    public async syncAuthStatus(): Promise<void> {
+        const authStatus = this.authProvider.getAuthStatus()
+        await this.publishConfig()
+        if (authStatus.siteVersion) {
+            // Update codebase context
+            const codebaseContext = await getCodebaseContext(this.config, this.rgPath, this.editor, this.chat)
+            if (codebaseContext) {
+                this.codebaseContext = codebaseContext
+                await this.publishContextStatus()
+            }
         }
-        await vscode.commands.executeCommand('setContext', 'cody.activated', authStatus.isLoggedIn)
-        this.setWebviewView(authStatus.isLoggedIn ? 'chat' : 'login')
-        await this.webview?.postMessage({ type: 'login', authStatus })
-        this.sendEvent('auth', authStatus.isLoggedIn ? 'successfully' : 'failed')
     }
 
     /**
@@ -685,10 +703,10 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
     /**
      * Publish the current context status to the webview.
      */
-    private publishContextStatus(): void {
-        const send = (): void => {
+    private async publishContextStatus(): Promise<void> {
+        const send = async (): Promise<void> => {
             const editorContext = this.editor.getActiveTextEditor()
-            void this.webview?.postMessage({
+            await this.webview?.postMessage({
                 type: 'contextStatus',
                 contextStatus: {
                     mode: this.config.useContext,
@@ -701,7 +719,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
             })
         }
         this.disposables.push(vscode.window.onDidChangeTextEditorSelection(() => send()))
-        send()
+        await send()
     }
 
     /**
@@ -722,13 +740,13 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
     /**
      * Publish the config to the webview.
      */
-    private publishConfig(): void {
+    private async publishConfig(): Promise<void> {
         const send = async (): Promise<void> => {
             this.config = await getFullConfig(this.secretStorage, this.localStorage)
 
             // check if the new configuration change is valid or not
             const authStatus = this.authProvider.getAuthStatus()
-            const localProcess = await this.localAppDetector.getProcessInfo(authStatus.isLoggedIn)
+            const localProcess = await this.authProvider.appDetector.getProcessInfo(authStatus.isLoggedIn)
             const configForWebview: ConfigurationSubsetForWebview & LocalEnv = {
                 ...localProcess,
                 debugEnable: this.config.debugEnable,
@@ -738,11 +756,11 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
             // update codebase context on configuration change
             await this.updateCodebaseContext()
             await this.webview?.postMessage({ type: 'config', config: configForWebview, authStatus })
-            debug('Cody:publishConfig', 'webview', { verbose: authStatus })
+            debug('Cody:publishConfig', 'configForWebview', { verbose: configForWebview })
         }
 
         this.disposables.push(this.configurationChangeEvent.event(() => send()))
-        send().catch(error => console.error(error))
+        await send()
     }
 
     /**
@@ -776,19 +794,6 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
     }
 
     /**
-     * Display app state in webview view that is used during Signin flow
-     */
-    private async sendLocalAppState(token: string | null): Promise<void> {
-        // Notify webview that app is installed
-        debug('ChatViewProvider:sendLocalAppState', 'isInstalled')
-        void this.webview?.postMessage({ type: 'app-state', isInstalled: true })
-        // Log user in if token is present and user is not logged in
-        if (token) {
-            debug('ChatViewProvider:sendLocalAppState', 'auth')
-            await this.authProvider.auth(LOCAL_APP_URL.href, token, this.config.customHeaders)
-        }
-    }
-    /**
      * Display error message in webview view as banner in chat view
      * It does not display error message as assistant response
      */
@@ -818,6 +823,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
         _token: vscode.CancellationToken
     ): Promise<void> {
         this.webview = webviewView.webview
+        this.authProvider.webview = webviewView.webview
 
         const extensionPath = vscode.Uri.file(this.extensionPath)
         const webviewPath = vscode.Uri.joinPath(extensionPath, 'dist')
@@ -825,6 +831,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
         webviewView.webview.options = {
             enableScripts: true,
             localResourceRoots: [webviewPath],
+            enableCommandUris: true,
         }
 
         // Create Webview using client/cody/index.html

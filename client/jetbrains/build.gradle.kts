@@ -38,6 +38,7 @@ dependencies {
     implementation("org.eclipse.lsp4j:org.eclipse.lsp4j.jsonrpc:0.21.0")
     testImplementation(platform("org.junit:junit-bom:5.7.2"))
     testImplementation("org.junit.jupiter:junit-jupiter")
+    testImplementation("org.assertj:assertj-core:3.24.2")
 }
 
 spotless {
@@ -146,8 +147,8 @@ tasks {
         jvmArgs("-Djdk.module.illegalAccess.silent=true")
         systemProperty("cody-agent.trace-path", "$buildDir/sourcegraph/cody-agent-trace.json")
         systemProperty("cody-agent.directory", agentTargetDirectory.parent.toString())
-        val isAgentEnabled = findProperty("disableAgent") == "true"
-        systemProperty("cody-agent.enabled", (!isAgentEnabled).toString())
+        val isAgentEnabled = findProperty("enableAgent") == "true"
+        systemProperty("cody-agent.enabled", isAgentEnabled.toString())
     }
 
     // Configure UI tests plugin
@@ -174,4 +175,8 @@ tasks {
         // https://plugins.jetbrains.com/docs/intellij/deployment.html#specifying-a-release-channel
         channels.set(listOf(properties("pluginVersion").split('-').getOrElse(1) { "default" }.split('.').first()))
     }
+}
+
+tasks.test {
+    useJUnitPlatform()
 }
