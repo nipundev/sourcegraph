@@ -6,7 +6,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"fmt"
 	"io"
 	"net/http"
 	"time"
@@ -45,8 +44,8 @@ func Search(
 		return MockSearch(ctx, repo, repoID, commit, p, fetchTimeout, onMatches)
 	}
 
-	tr, ctx := trace.New(ctx, "searcher.client", fmt.Sprintf("%s@%s", repo, commit))
-	defer tr.FinishWithErr(&err)
+	tr, ctx := trace.New(ctx, "searcher.client", repo.Attr(), commit.Attr())
+	defer tr.EndWithErr(&err)
 
 	r := protocol.Request{
 		Repo:   repo,
@@ -122,8 +121,8 @@ func Search(
 }
 
 func textSearchStream(ctx context.Context, url string, body []byte, cb func([]*protocol.FileMatch)) (_ bool, err error) {
-	tr, ctx := trace.New(ctx, "searcher", "textSearchStream")
-	defer tr.FinishWithErr(&err)
+	tr, ctx := trace.New(ctx, "searcher.textSearchStream")
+	defer tr.EndWithErr(&err)
 
 	req, err := http.NewRequestWithContext(ctx, "GET", url, bytes.NewReader(body))
 	if err != nil {

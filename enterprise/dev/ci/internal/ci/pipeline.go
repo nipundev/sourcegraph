@@ -26,7 +26,6 @@ var legacyDockerImages = []string{
 	"codeinsights-db",
 	"codeintel-db",
 	"postgres-12-alpine",
-	"prometheus-gcp",
 }
 
 // GeneratePipeline is the main pipeline generation function. It defines the build pipeline for each of the
@@ -103,9 +102,9 @@ func GeneratePipeline(c Config) (*bk.Pipeline, error) {
 		var bzlCmd string
 		scanner := bufio.NewScanner(strings.NewReader(env["CI_COMMIT_MESSAGE"]))
 		for scanner.Scan() {
-			line := scanner.Text()
+			line := strings.TrimSpace(scanner.Text())
 			if strings.HasPrefix(line, "!bazel") {
-				bzlCmd = strings.TrimPrefix(line, "!bazel")
+				bzlCmd = strings.TrimSpace(strings.TrimPrefix(line, "!bazel"))
 
 				// sanitize the input
 				if err := verifyBazelCommand(bzlCmd); err != nil {
@@ -119,6 +118,7 @@ func GeneratePipeline(c Config) (*bk.Pipeline, error) {
 						bk.Cmd(bazelCmd(bzlCmd)),
 					)
 				})
+				break
 			}
 		}
 
@@ -188,22 +188,6 @@ func GeneratePipeline(c Config) (*bk.Pipeline, error) {
 			addVsceTests,
 			wait,
 			addVsceReleaseSteps)
-
-	case runtype.CodyReleaseBranch:
-		// If this is the Cody VS Code extension release branch, run the Cody tests and release
-		ops = operations.NewSet(
-			addCodyUnitIntegrationTests,
-			addCodyE2ETests,
-			wait,
-			addCodyReleaseSteps("stable"))
-
-	case runtype.CodyNightly:
-		// If this is a Cody VS Code extension nightly build, run the Cody tests and release
-		ops = operations.NewSet(
-			addCodyUnitIntegrationTests,
-			addCodyE2ETests,
-			wait,
-			addCodyReleaseSteps("nightly"))
 
 	case runtype.BextNightly:
 		// If this is a browser extension nightly build, run the browser-extension tests and

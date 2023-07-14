@@ -172,10 +172,10 @@ func (c *Client) listLanguageMappingsJSON(ctx context.Context, repository api.Re
 
 // Search performs a symbol search on the symbols service.
 func (c *Client) Search(ctx context.Context, args search.SymbolsParameters) (symbols result.Symbols, err error) {
-	tr, ctx := trace.New(ctx, "symbols", "Search",
-		attribute.String("repo", string(args.Repo)),
-		attribute.String("commitID", string(args.CommitID)))
-	defer tr.FinishWithErr(&err)
+	tr, ctx := trace.New(ctx, "symbols.Search",
+		args.Repo.Attr(),
+		args.CommitID.Attr())
+	defer tr.EndWithErr(&err)
 
 	var response search.SymbolsResponse
 
@@ -272,10 +272,10 @@ func (c *Client) searchJSON(ctx context.Context, args search.SymbolsParameters) 
 }
 
 func (c *Client) LocalCodeIntel(ctx context.Context, args types.RepoCommitPath) (result *types.LocalCodeIntelPayload, err error) {
-	tr, ctx := trace.New(ctx, "symbols", "LocalCodeIntel",
-		attribute.String("repo", string(args.Repo)),
-		attribute.String("commitID", string(args.Commit)))
-	defer tr.FinishWithErr(&err)
+	tr, ctx := trace.New(ctx, "symbols.LocalCodeIntel",
+		attribute.String("repo", args.Repo),
+		attribute.String("commitID", args.Commit))
+	defer tr.EndWithErr(&err)
 
 	if internalgrpc.IsGRPCEnabled(ctx) {
 		return c.localCodeIntelGRPC(ctx, args)
@@ -337,10 +337,10 @@ func (c *Client) localCodeIntelJSON(ctx context.Context, args types.RepoCommitPa
 }
 
 func (c *Client) SymbolInfo(ctx context.Context, args types.RepoCommitPathPoint) (result *types.SymbolInfo, err error) {
-	tr, ctx := trace.New(ctx, "squirrel", "SymbolInfo",
-		attribute.String("repo", string(args.Repo)),
-		attribute.String("commitID", string(args.Commit)))
-	defer tr.FinishWithErr(&err)
+	tr, ctx := trace.New(ctx, "squirrel.SymbolInfo",
+		attribute.String("repo", args.Repo),
+		attribute.String("commitID", args.Commit))
+	defer tr.EndWithErr(&err)
 
 	if internalgrpc.IsGRPCEnabled(ctx) {
 		result, err = c.symbolInfoGRPC(ctx, args)
@@ -442,10 +442,10 @@ func (c *Client) httpPost(
 	repo api.RepoName,
 	payload any,
 ) (resp *http.Response, err error) {
-	tr, ctx := trace.New(ctx, "symbols", "httpPost",
+	tr, ctx := trace.New(ctx, "symbols.httpPost",
 		attribute.String("method", method),
-		attribute.String("repo", string(repo)))
-	defer tr.FinishWithErr(&err)
+		repo.Attr())
+	defer tr.EndWithErr(&err)
 
 	symbolsURL, err := c.url(repo)
 	if err != nil {

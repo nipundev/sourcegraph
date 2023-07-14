@@ -40,7 +40,7 @@ def oci_deps():
 
     oci_pull(
         name = "wolfi_cadvisor_base",
-        digest = "sha256:42e9626596c7e3873f9ea66b87732273bc93f20d05499d410160468f40d585f5",
+        digest = "sha256:39f800ff006bbe579c71eaecc0157d5a57c7e2c0b11ba7a262eb8aec9fd848e0",
         image = "index.docker.io/sourcegraph/wolfi-cadvisor-base",
     )
 
@@ -151,6 +151,12 @@ def oci_deps():
         name = "wolfi_prometheus_base",
         digest = "sha256:cc529187858e9e019a6ff2fdb5da4f5cff2d8222987bdc59b386e53eb1fa1a63",
         image = "index.docker.io/sourcegraph/wolfi-prometheus-base",
+    )
+
+    oci_pull(
+        name = "wolfi_prometheus_gcp_base",
+        digest = "sha256:9981265b4e0132176bb3344913a1d5eda3f4fb77560028fe2e076a9d505a0a1f",
+        image = "index.docker.io/sourcegraph/wolfi-prometheus-gcp-base",
     )
 
     oci_pull(

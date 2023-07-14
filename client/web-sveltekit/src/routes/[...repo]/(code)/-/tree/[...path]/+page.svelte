@@ -1,24 +1,25 @@
 <script lang="ts">
-    import { mdiFileDocumentOutline, mdiFolder, mdiFolderOutline } from '@mdi/js'
+    import { mdiFileDocumentOutline, mdiFolderOutline } from '@mdi/js'
 
-    import { page } from '$app/stores'
     import { isErrorLike } from '$lib/common'
     import Icon from '$lib/Icon.svelte'
+    import FileHeader from '$lib/repo/FileHeader.svelte'
+    import { asStore } from '$lib/utils'
 
     import type { PageData } from './$types'
 
     export let data: PageData
 
-    $: treeDataStatus = data.treeEntries
+    $: treeDataStatus = asStore(data.treeEntries.deferred)
     $: treeOrError = (!$treeDataStatus.loading && $treeDataStatus.data) || null
     $: entries = treeOrError && !isErrorLike(treeOrError) ? treeOrError.entries : []
 </script>
 
+<FileHeader>
+    <Icon slot="icon" svgPath={mdiFolderOutline} />
+</FileHeader>
+
 <div class="content">
-    <h1>
-        <Icon svgPath={mdiFolder} />
-        <span class="ml-2">{$page.params.path}</span>
-    </h1>
     <h2>Files and directories</h2>
     <ul>
         {#if treeOrError}
@@ -37,12 +38,6 @@
 <style lang="scss">
     .content {
         padding: 1rem;
-        overflow: auto;
-    }
-
-    h1 {
-        display: flex;
-        align-items: center;
     }
 
     ul {

@@ -1949,7 +1949,7 @@ Referenced by:
 
 ```
 
-See [enterprise/internal/insights/background/queryrunner/worker.go:Job](https://sourcegraph.com/search?q=repo:%5Egithub%5C.com/sourcegraph/sourcegraph%24+file:enterprise/internal/insights/background/queryrunner/worker.go+type+Job&amp;patternType=literal)
+See [internal/insights/background/queryrunner/worker.go:Job](https://sourcegraph.com/search?q=repo:%5Egithub%5C.com/sourcegraph/sourcegraph%24+file:internal/insights/background/queryrunner/worker.go+type+Job&amp;patternType=literal)
 
 **cost**: Integer representing a cost approximation of executing this search query.
 
@@ -4156,6 +4156,7 @@ Foreign-key constraints:
  searchable              | boolean                  |           | not null | true
  completions_quota       | integer                  |           |          | 
  code_completions_quota  | integer                  |           |          | 
+ completed_post_signup   | boolean                  |           | not null | false
 Indexes:
     "users_pkey" PRIMARY KEY, btree (id)
     "users_billing_customer_id" UNIQUE, btree (billing_customer_id) WHERE deleted_at IS NULL

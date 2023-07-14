@@ -1595,13 +1595,13 @@ func doRequest(ctx context.Context, logger log.Logger, apiURL *url.URL, auther a
 
 	var resp *http.Response
 
-	tr, ctx := trace.New(ctx, "GitHub", "",
+	tr, ctx := trace.New(ctx, "GitHub",
 		attribute.Stringer("url", req.URL))
 	defer func() {
 		if resp != nil {
 			tr.SetAttributes(attribute.String("status", resp.Status))
 		}
-		tr.FinishWithErr(&err)
+		tr.EndWithErr(&err)
 	}()
 	req = req.WithContext(ctx)
 

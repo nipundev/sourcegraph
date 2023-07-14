@@ -31,6 +31,7 @@ import (
 	"github.com/sourcegraph/sourcegraph/internal/actor"
 	"github.com/sourcegraph/sourcegraph/internal/api"
 	"github.com/sourcegraph/sourcegraph/internal/authz"
+	"github.com/sourcegraph/sourcegraph/internal/database"
 	"github.com/sourcegraph/sourcegraph/internal/gitserver/gitdomain"
 	"github.com/sourcegraph/sourcegraph/internal/gitserver/protocol"
 	proto "github.com/sourcegraph/sourcegraph/internal/gitserver/v1"
@@ -82,7 +83,7 @@ type ClientSource interface {
 }
 
 // NewClient returns a new gitserver.Client.
-func NewClient() Client {
+func NewClient(_ database.DB) Client {
 	return &clientImplementor{
 		logger:      sglog.Scoped("NewClient", "returns a new gitserver.Client"),
 		httpClient:  defaultDoer,
@@ -344,10 +345,6 @@ type Client interface {
 	// DiffSymbols performs a diff command which is expected to be parsed by our symbols package
 	DiffSymbols(ctx context.Context, repo api.RepoName, commitA, commitB api.CommitID) ([]byte, error)
 
-	// ListFiles returns a list of root-relative file paths matching the given
-	// pattern in a particular commit of a repository.
-	ListFiles(ctx context.Context, checker authz.SubRepoPermissionChecker, repo api.RepoName, commit api.CommitID, opts *protocol.ListFilesOpts) ([]string, error)
-
 	// Commits returns all commits matching the options.
 	Commits(ctx context.Context, checker authz.SubRepoPermissionChecker, repo api.RepoName, opt CommitsOptions) ([]*gitdomain.Commit, error)
 
@@ -584,7 +581,7 @@ func (e badRequestError) BadRequest() bool { return true }
 func (c *RemoteGitCommand) sendExec(ctx context.Context) (_ io.ReadCloser, err error) {
 	ctx, cancel := context.WithCancel(ctx)
 	ctx, _, endObservation := c.execOp.With(ctx, &err, observation.Args{Attrs: []attribute.KeyValue{
-		attribute.String("repo", string(c.repo)),
+		c.repo.Attr(),
 		attribute.StringSlice("args", c.args[1:]),
 	}})
 	done := func() {
@@ -753,7 +750,7 @@ func isRevisionNotFound(err string) bool {
 
 func (c *clientImplementor) Search(ctx context.Context, args *protocol.SearchRequest, onMatches func([]protocol.CommitMatch)) (limitHit bool, err error) {
 	ctx, _, endObservation := c.operations.search.With(ctx, &err, observation.Args{Attrs: []attribute.KeyValue{
-		attribute.String("repo", string(args.Repo)),
+		args.Repo.Attr(),
 		attribute.Stringer("query", args.Query),
 		attribute.Bool("diff", args.IncludeDiff),
 		attribute.Int("limit", args.Limit),
@@ -1575,7 +1572,7 @@ func (c *clientImplementor) do(ctx context.Context, repoForTracing api.RepoName,
 	}
 
 	ctx, trLogger, endObservation := c.operations.do.With(ctx, &err, observation.Args{Attrs: []attribute.KeyValue{
-		attribute.String("repo", string(repoForTracing)),
+		repoForTracing.Attr(),
 		attribute.String("method", method),
 		attribute.String("path", parsedURL.Path),
 	}})
@@ -1767,9 +1764,4 @@ func readResponseBody(body io.Reader) string {
 	// strings.TrimSpace, see attached screenshots in this pull request:
 	// https://github.com/sourcegraph/sourcegraph/pull/39358.
 	return strings.TrimSpace(string(content))
-}
-
-type clientAndError struct {
-	client proto.GitserverServiceClient
-	err    error
 }

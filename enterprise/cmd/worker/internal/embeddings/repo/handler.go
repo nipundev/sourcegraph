@@ -6,18 +6,18 @@ import (
 	"github.com/sourcegraph/log"
 
 	"github.com/sourcegraph/sourcegraph/cmd/searcher/diff"
-	codeintelContext "github.com/sourcegraph/sourcegraph/enterprise/internal/codeintel/context"
-	edb "github.com/sourcegraph/sourcegraph/enterprise/internal/database"
-	"github.com/sourcegraph/sourcegraph/enterprise/internal/embeddings"
-	bgrepo "github.com/sourcegraph/sourcegraph/enterprise/internal/embeddings/background/repo"
-	"github.com/sourcegraph/sourcegraph/enterprise/internal/embeddings/embed"
-	"github.com/sourcegraph/sourcegraph/enterprise/internal/paths"
 	"github.com/sourcegraph/sourcegraph/internal/actor"
 	"github.com/sourcegraph/sourcegraph/internal/api"
+	codeintelContext "github.com/sourcegraph/sourcegraph/internal/codeintel/context"
 	"github.com/sourcegraph/sourcegraph/internal/conf"
 	"github.com/sourcegraph/sourcegraph/internal/conf/conftypes"
+	"github.com/sourcegraph/sourcegraph/internal/database"
+	"github.com/sourcegraph/sourcegraph/internal/embeddings"
+	bgrepo "github.com/sourcegraph/sourcegraph/internal/embeddings/background/repo"
+	"github.com/sourcegraph/sourcegraph/internal/embeddings/embed"
 	"github.com/sourcegraph/sourcegraph/internal/featureflag"
 	"github.com/sourcegraph/sourcegraph/internal/gitserver"
+	"github.com/sourcegraph/sourcegraph/internal/paths"
 	"github.com/sourcegraph/sourcegraph/internal/types"
 	"github.com/sourcegraph/sourcegraph/internal/uploadstore"
 	"github.com/sourcegraph/sourcegraph/internal/workerutil"
@@ -25,7 +25,7 @@ import (
 )
 
 type handler struct {
-	db                     edb.EnterpriseDB
+	db                     database.DB
 	uploadStore            uploadstore.Store
 	gitserverClient        gitserver.Client
 	contextService         embed.ContextService
@@ -48,7 +48,7 @@ var splitOptions = codeintelContext.SplitOptions{
 	ChunkEarlySplitTokensThreshold: embeddingChunkEarlySplitTokensThreshold,
 }
 
-func (h *handler) Handle(ctx context.Context, logger log.Logger, record *bgrepo.RepoEmbeddingJob) error {
+func (h *handler) Handle(ctx context.Context, logger log.Logger, record *bgrepo.RepoEmbeddingJob) (err error) {
 	embeddingsConfig := conf.GetEmbeddingsConfig(conf.Get().SiteConfig())
 	if embeddingsConfig == nil {
 		return errors.New("embeddings are not configured or disabled")
@@ -60,6 +60,30 @@ func (h *handler) Handle(ctx context.Context, logger log.Logger, record *bgrepo.
 	if err != nil {
 		return err
 	}
+
+	fetcher := &revisionFetcher{
+		repo:      repo.Name,
+		revision:  record.Revision,
+		gitserver: h.gitserverClient,
+	}
+
+	err = fetcher.validateRevision(ctx)
+	if err != nil {
+		return err
+	}
+
+	defer func() {
+		if err != nil {
+			return
+		}
+
+		// If we return with err=nil, then we have created a new index with a
+		// name based on the repo ID. It might be that the previous index had a
+		// name based on the repo name (deprecated), which we can delete now on
+		// a best-effort basis.
+		indexNameDeprecated := string(embeddings.GetRepoEmbeddingIndexNameDeprecated(repo.Name))
+		_ = h.uploadStore.Delete(ctx, indexNameDeprecated)
+	}()
 
 	embeddingsClient, err := embed.NewEmbeddingsClient(embeddingsConfig)
 	if err != nil {
@@ -80,16 +104,15 @@ func (h *handler) Handle(ctx context.Context, logger log.Logger, record *bgrepo.
 		}
 	}
 
-	fetcher := &revisionFetcher{
-		repo:      repo.Name,
-		revision:  record.Revision,
-		gitserver: h.gitserverClient,
-	}
-
+	includedFiles, excludedFiles := getFileFilterPathPatterns(embeddingsConfig)
 	opts := embed.EmbedRepoOpts{
-		RepoName:          repo.Name,
-		Revision:          record.Revision,
-		ExcludePatterns:   getExcludedFilePathPatterns(embeddingsConfig),
+		RepoName: repo.Name,
+		Revision: record.Revision,
+		FileFilters: embed.FileFilters{
+			ExcludePatterns:  excludedFiles,
+			IncludePatterns:  includedFiles,
+			MaxFileSizeBytes: embeddingsConfig.FileFilters.MaxFileSizeBytes,
+		},
 		SplitOptions:      splitOptions,
 		MaxCodeEmbeddings: embeddingsConfig.MaxCodeEmbeddingsPerRepo,
 		MaxTextEmbeddings: embeddingsConfig.MaxTextEmbeddingsPerRepo,
@@ -126,11 +149,12 @@ func (h *handler) Handle(ctx context.Context, logger log.Logger, record *bgrepo.
 	logger.Info(
 		"finished generating repo embeddings",
 		log.String("repoName", string(repo.Name)),
+		log.Int32("repoID", int32(repo.ID)),
 		log.String("revision", string(record.Revision)),
 		log.Object("stats", stats.ToFields()...),
 	)
 
-	indexName := string(embeddings.GetRepoEmbeddingIndexName(repo.Name))
+	indexName := string(embeddings.GetRepoEmbeddingIndexName(repo.ID))
 	if stats.IsIncremental {
 		return embeddings.UpdateRepoEmbeddingIndex(ctx, h.uploadStore, indexName, previousIndex, repoEmbeddingIndex, toRemove, ranks)
 	} else {
@@ -138,14 +162,20 @@ func (h *handler) Handle(ctx context.Context, logger log.Logger, record *bgrepo.
 	}
 }
 
-func getExcludedFilePathPatterns(embeddingsConfig *conftypes.EmbeddingsConfig) []*paths.GlobPattern {
-	var excludedGlobPatterns []*paths.GlobPattern
-	if embeddingsConfig != nil && len(embeddingsConfig.ExcludedFilePathPatterns) != 0 {
-		excludedGlobPatterns = embed.CompileGlobPatterns(embeddingsConfig.ExcludedFilePathPatterns)
-	} else {
+func getFileFilterPathPatterns(embeddingsConfig *conftypes.EmbeddingsConfig) (includedFiles, excludedFiles []*paths.GlobPattern) {
+	var includedGlobPatterns, excludedGlobPatterns []*paths.GlobPattern
+	if embeddingsConfig != nil {
+		if len(embeddingsConfig.FileFilters.ExcludedFilePathPatterns) != 0 {
+			excludedGlobPatterns = embed.CompileGlobPatterns(embeddingsConfig.FileFilters.ExcludedFilePathPatterns)
+		}
+		if len(embeddingsConfig.FileFilters.IncludedFilePathPatterns) != 0 {
+			includedGlobPatterns = embed.CompileGlobPatterns(embeddingsConfig.FileFilters.IncludedFilePathPatterns)
+		}
+	}
+	if len(excludedGlobPatterns) == 0 {
 		excludedGlobPatterns = embed.GetDefaultExcludedFilePathPatterns()
 	}
-	return excludedGlobPatterns
+	return includedGlobPatterns, excludedGlobPatterns
 }
 
 // getPreviousEmbeddingIndex checks the last successfully indexed revision and returns its embeddings index. If there
@@ -158,8 +188,7 @@ func (h *handler) getPreviousEmbeddingIndex(ctx context.Context, logger log.Logg
 		return "", nil
 	}
 
-	indexName := string(embeddings.GetRepoEmbeddingIndexName(repo.Name))
-	index, err := embeddings.DownloadRepoEmbeddingIndex(ctx, h.uploadStore, indexName)
+	index, err := embeddings.DownloadRepoEmbeddingIndex(ctx, h.uploadStore, repo.ID, repo.Name)
 	if err != nil {
 		logger.Error("Error downloading previous embeddings index. Falling back to full index")
 		return "", nil
@@ -237,4 +266,23 @@ func (r *revisionFetcher) Diff(ctx context.Context, oldCommit api.CommitID) (
 	}
 
 	return
+}
+
+// validateRevision returns an error if the revision provided to this job is empty.
+// This can happen when GetDefaultBranch's response is error or empty at the time this job was scheduled.
+// Only the handler should provide the error to mark a failed/errored job, therefore handler requires a revision check.
+func (r *revisionFetcher) validateRevision(ctx context.Context) error {
+	// if the revision is empty then fetch from gitserver to determine this job's failure message
+	if r.revision == "" {
+		_, _, err := r.gitserver.GetDefaultBranch(ctx, r.repo, false)
+
+		if err != nil {
+			return err
+		}
+
+		// We likely had an empty repo at the time of scheduling this job.
+		// The repo can be processed once it's resubmitted with a non-empty revision.
+		return errors.Newf("could not get latest commit for repo %s", r.repo)
+	}
+	return nil
 }

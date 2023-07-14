@@ -5,14 +5,23 @@
     import { isErrorLike } from '$lib/common'
     import Icon from '$lib/Icon.svelte'
     import LoadingSpinner from '$lib/LoadingSpinner.svelte'
+    import SidebarToggleButton from '$lib/repo/SidebarToggleButton.svelte'
+    import { sidebarOpen } from '$lib/repo/stores'
+    import { asStore } from '$lib/utils'
 
     import type { PageData } from './$types'
 
     export let data: PageData
 
-    $: treeOrError = data.treeEntries
-    $: commits = data.commits
+    $: treeOrError = asStore(data.treeEntries.deferred)
+    $: commits = asStore(data.commits.deferred)
 </script>
+
+{#if !$sidebarOpen}
+    <div class="header">
+        <SidebarToggleButton />
+    </div>
+{/if}
 
 <div class="content">
     {#if !isErrorLike(data.resolvedRevision)}
@@ -52,6 +61,10 @@
 </div>
 
 <style lang="scss">
+    .header {
+        padding: 0.5rem;
+    }
+
     .content {
         padding: 1rem;
         overflow: auto;

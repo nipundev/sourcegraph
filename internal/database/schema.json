@@ -13840,7 +13840,7 @@
     },
     {
       "Name": "insights_query_runner_jobs",
-      "Comment": "See [enterprise/internal/insights/background/queryrunner/worker.go:Job](https://sourcegraph.com/search?q=repo:%5Egithub%5C.com/sourcegraph/sourcegraph%24+file:enterprise/internal/insights/background/queryrunner/worker.go+type+Job\u0026patternType=literal)",
+      "Comment": "See [internal/insights/background/queryrunner/worker.go:Job](https://sourcegraph.com/search?q=repo:%5Egithub%5C.com/sourcegraph/sourcegraph%24+file:internal/insights/background/queryrunner/worker.go+type+Job\u0026patternType=literal)",
       "Columns": [
         {
           "Name": "cancel",
@@ -26793,6 +26793,19 @@
           "TypeName": "integer",
           "IsNullable": true,
           "Default": "",
+          "CharacterMaximumLength": 0,
+          "IsIdentity": false,
+          "IdentityGeneration": "",
+          "IsGenerated": "NEVER",
+          "GenerationExpression": "",
+          "Comment": ""
+        },
+        {
+          "Name": "completed_post_signup",
+          "Index": 22,
+          "TypeName": "boolean",
+          "IsNullable": false,
+          "Default": "false",
           "CharacterMaximumLength": 0,
           "IsIdentity": false,
           "IdentityGeneration": "",

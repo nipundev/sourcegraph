@@ -2760,7 +2760,7 @@ CREATE TABLE insights_query_runner_jobs (
     trace_id text
 );
 
-COMMENT ON TABLE insights_query_runner_jobs IS 'See [enterprise/internal/insights/background/queryrunner/worker.go:Job](https://sourcegraph.com/search?q=repo:%5Egithub%5C.com/sourcegraph/sourcegraph%24+file:enterprise/internal/insights/background/queryrunner/worker.go+type+Job&patternType=literal)';
+COMMENT ON TABLE insights_query_runner_jobs IS 'See [internal/insights/background/queryrunner/worker.go:Job](https://sourcegraph.com/search?q=repo:%5Egithub%5C.com/sourcegraph/sourcegraph%24+file:internal/insights/background/queryrunner/worker.go+type+Job&patternType=literal)';
 
 COMMENT ON COLUMN insights_query_runner_jobs.priority IS 'Integer representing a category of priority for this query. Priority in this context is ambiguously defined for consumers to decide an interpretation.';
 
@@ -4081,6 +4081,7 @@ CREATE TABLE users (
     searchable boolean DEFAULT true NOT NULL,
     completions_quota integer,
     code_completions_quota integer,
+    completed_post_signup boolean DEFAULT false NOT NULL,
     CONSTRAINT users_display_name_max_length CHECK ((char_length(display_name) <= 255)),
     CONSTRAINT users_username_max_length CHECK ((char_length((username)::text) <= 255)),
     CONSTRAINT users_username_valid_chars CHECK ((username OPERATOR(~) '^\w(?:\w|[-.](?=\w))*-?$'::citext))
