@@ -4,7 +4,7 @@ import { checkRequestAccessAllowed } from '../util/checkRequestAccessAllowed'
 
 import { isPackagesEnabled } from './flags'
 import { PermissionsSyncJobsTable } from './permissions-center/PermissionsSyncJobsTable'
-import { SiteAdminAreaRoute } from './SiteAdminArea'
+import type { SiteAdminAreaRoute } from './SiteAdminArea'
 
 const AnalyticsOverviewPage = lazyComponent(() => import('./analytics/AnalyticsOverviewPage'), 'AnalyticsOverviewPage')
 const AnalyticsSearchPage = lazyComponent(() => import('./analytics/AnalyticsSearchPage'), 'AnalyticsSearchPage')
@@ -30,7 +30,7 @@ const AnalyticsNotebooksPage = lazyComponent(
     'AnalyticsNotebooksPage'
 )
 const SiteAdminConfigurationPage = lazyComponent(
-    () => import('./SiteAdminConfigurationPage'),
+    () => import('./site-config/SiteAdminConfigurationPage'),
     'SiteAdminConfigurationPage'
 )
 const SiteAdminSettingsPage = lazyComponent(() => import('./SiteAdminSettingsPage'), 'SiteAdminSettingsPage')
@@ -131,7 +131,7 @@ export const otherSiteAdminRoutes: readonly SiteAdminAreaRoute[] = [
         render: () => <AnalyticsNotebooksPage />,
     },
     {
-        path: '/configuration',
+        path: '/configuration/:tab?',
         render: props => <SiteAdminConfigurationPage {...props} />,
     },
     {
