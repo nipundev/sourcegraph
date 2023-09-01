@@ -5,7 +5,7 @@
   <img src="https://p21.p4.n0.cdn.getcloudapp.com/items/12u7NWXL/5e21725d-6e84-4ccd-8300-27bf9a050416.svg" width="50%">
 </picture></a>
 </p>
-
+[![Bearer](https://github.com/nipundev/sourcegraph/actions/workflows/bearer.yml/badge.svg)](https://github.com/nipundev/sourcegraph/actions/workflows/bearer.yml)
 <p align="center">
     <a href="https://docs.sourcegraph.com">Docs</a> •
     <a href="https://sourcegraph.com/github.com/sourcegraph/sourcegraph/-/blob/CONTRIBUTING.md">Contributing</a> •
