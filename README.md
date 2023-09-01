@@ -5,7 +5,7 @@
   <img src="https://p21.p4.n0.cdn.getcloudapp.com/items/12u7NWXL/5e21725d-6e84-4ccd-8300-27bf9a050416.svg" width="50%">
 </picture></a>
 </p>
-[![Bearer](https://github.com/nipundev/sourcegraph/actions/workflows/bearer.yml/badge.svg)](https://github.com/nipundev/sourcegraph/actions/workflows/bearer.yml)
+
 <p align="center">
     <a href="https://docs.sourcegraph.com">Docs</a> •
     <a href="https://sourcegraph.com/github.com/sourcegraph/sourcegraph/-/blob/CONTRIBUTING.md">Contributing</a> •
@@ -14,6 +14,9 @@
     <br /><br />
     <a href="https://buildkite.com/sourcegraph/sourcegraph">
         <img src="https://badge.buildkite.com/00bbe6fa9986c78b8e8591cffeb0b0f2e8c4bb610d7e339ff6.svg?branch=main" alt="Build status" />
+    </a>
+    <a href="https://github.com/nipundev/sourcegraph/actions/workflows/bearer.yml">
+        <img src="https://github.com/nipundev/sourcegraph/actions/workflows/bearer.yml/badge.svg" alt="Bearer" />
     </a>
     <a href="https://api.securityscorecards.dev/projects/github.com/sourcegraph/sourcegraph">
         <img src="https://img.shields.io/ossf-scorecard/github.com/sourcegraph/sourcegraph?label=openssf%20scorecard" alt="Scorecard" />
