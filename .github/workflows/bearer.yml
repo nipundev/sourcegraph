@@ -16,4 +16,5 @@ jobs:
         id: report
         uses: bearer/bearer-action@v2
         with:
+          scanner: secrets,sast
           api-key: ${{ secrets.BEARER_TOKEN }}
