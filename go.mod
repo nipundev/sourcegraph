@@ -47,6 +47,8 @@ replace (
 	// that they always use the current version of go-grpc-middleware that they're developing). Until this issue is fixed,
 	// we'll need to ensure that we explicitly depend on the latest version of go-grpc-middleware (v2.0.0-rc.3) as of this writing.
 	github.com/grpc-ecosystem/go-grpc-middleware/v2 => github.com/grpc-ecosystem/go-grpc-middleware/v2 v2.0.0-rc.3
+	// Pending: https://github.com/pkoukk/tiktoken-go/pull/40
+	github.com/pkoukk/tiktoken-go => github.com/sourcegraph/tiktoken-go v0.0.0-20230905173153-caab340cf008
 	// Pending a release cut of https://github.com/prometheus/alertmanager/pull/3010
 	github.com/prometheus/common => github.com/prometheus/common v0.32.1
 	// Pending: https://github.com/shurcooL/httpgzip/pull/9
@@ -132,7 +134,6 @@ require (
 	github.com/google/uuid v1.3.0
 	github.com/gorilla/context v1.1.1
 	github.com/gorilla/csrf v1.7.1
-	github.com/gorilla/handlers v1.5.1
 	github.com/gorilla/mux v1.8.0
 	github.com/gorilla/schema v1.2.0
 	github.com/gorilla/securecookie v1.1.1
@@ -270,6 +271,7 @@ require (
 	github.com/aws/jsii-runtime-go v1.84.0
 	github.com/edsrzf/mmap-go v1.1.0
 	github.com/go-redsync/redsync/v4 v4.8.1
+	github.com/gorilla/handlers v1.5.1
 	github.com/hashicorp/cronexpr v1.1.1
 	github.com/hashicorp/go-tfe v1.32.1
 	github.com/hashicorp/terraform-cdk-go/cdktf v0.17.3
@@ -277,6 +279,7 @@ require (
 	github.com/jackc/pgerrcode v0.0.0-20220416144525-469b46aa5efa
 	github.com/mitchellh/go-homedir v1.1.0
 	github.com/mroth/weightedrand/v2 v2.0.1
+	github.com/pkoukk/tiktoken-go v0.1.5
 	github.com/prometheus/statsd_exporter v0.22.7
 	github.com/qdrant/go-client v1.3.0
 	github.com/sourcegraph/managed-services-platform-cdktf/gen/cloudflare v0.0.0-20230822024612-edb48c530722
@@ -395,7 +398,7 @@ require (
 	github.com/andres-erbsen/clock v0.0.0-20160526145045-9e14626cd129 // indirect
 	github.com/asaskevich/govalidator v0.0.0-20210307081110-f21760c49a8d // indirect
 	github.com/aws/aws-sdk-go v1.44.128
-	github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.4.1 // indirect
+	github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.4.1
 	github.com/aws/aws-sdk-go-v2/feature/ec2/imds v1.12.22 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/configsources v1.1.28 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/endpoints/v2 v2.4.22 // indirect
@@ -426,7 +429,7 @@ require (
 	github.com/di-wu/xsd-datetime v1.0.0
 	github.com/djherbis/buffer v1.2.0 // indirect
 	github.com/djherbis/nio/v3 v3.0.1 // indirect
-	github.com/dlclark/regexp2 v1.8.0 // indirect
+	github.com/dlclark/regexp2 v1.10.0 // indirect
 	github.com/docker/docker v23.0.1+incompatible // indirect
 	github.com/docker/go-connections v0.4.0 // indirect
 	github.com/docker/go-units v0.5.0 // indirect
@@ -556,7 +559,7 @@ require (
 	github.com/sourcegraph/conc v0.2.0
 	github.com/sourcegraph/mountinfo v0.0.0-20230106004439-7026e28cef67
 	github.com/sourcegraph/sourcegraph/monitoring v0.0.0-20230124144931-b2d81b1accb6
-	github.com/sourcegraph/zoekt v0.0.0-20230825171831-40a9a23bb04b
+	github.com/sourcegraph/zoekt v0.0.0-20230913182917-2d1affd44cb7
 	github.com/spf13/cobra v1.7.0 // indirect
 	github.com/spf13/pflag v1.0.5 // indirect
 	github.com/stretchr/objx v0.5.0 // indirect

@@ -1758,7 +1758,9 @@ type OrganizationInvitations struct {
 type OtherExternalServiceConnection struct {
 	// Exclude description: A list of repositories to never mirror by name after applying repositoryPathPattern. Supports excluding by exact name ({"name": "myrepo"}) or regular expression ({"pattern": ".*secret.*"}).
 	Exclude []*ExcludedOtherRepo `json:"exclude,omitempty"`
-	Repos   []string             `json:"repos"`
+	// MakeReposPublicOnDotCom description: Whether or not these repositories should be marked as public on Sourcegraph.com. Defaults to false.
+	MakeReposPublicOnDotCom bool     `json:"makeReposPublicOnDotCom,omitempty"`
+	Repos                   []string `json:"repos"`
 	// RepositoryPathPattern description: The pattern used to generate the corresponding Sourcegraph repository name for the repositories. In the pattern, the variable "{base}" is replaced with the Git clone base URL host and path, and "{repo}" is replaced with the repository path taken from the `repos` field.
 	//
 	// For example, if your Git clone base URL is https://git.example.com/repos and `repos` contains the value "my/repo", then a repositoryPathPattern of "{base}/{repo}" would mean that a repository at https://git.example.com/repos/my/repo is available on Sourcegraph at https://sourcegraph.example.com/git.example.com/repos/my/repo.
@@ -1825,6 +1827,8 @@ type PasswordPolicy struct {
 
 // PerforceAuthorization description: If non-null, enforces Perforce depot permissions.
 type PerforceAuthorization struct {
+	// IgnoreRulesWithHost description: Ignore host-based protection rules (any rule with something other than a wildcard in the Host field).
+	IgnoreRulesWithHost bool `json:"ignoreRulesWithHost,omitempty"`
 	// SubRepoPermissions description: Experimental: infer sub-repository permissions from protection rules.
 	SubRepoPermissions bool `json:"subRepoPermissions,omitempty"`
 }
@@ -2525,7 +2529,7 @@ type SiteConfiguration struct {
 	// DebugSearchSymbolsParallelism description: (debug) controls the amount of symbol search parallelism. Defaults to 20. It is not recommended to change this outside of debugging scenarios. This option will be removed in a future version.
 	DebugSearchSymbolsParallelism int `json:"debug.search.symbolsParallelism,omitempty"`
 	// DefaultRateLimit description: The rate limit (in requests per hour) for the default rate limiter in the rate limiters registry. By default this is disabled and the default rate limit is infinity.
-	DefaultRateLimit float64 `json:"defaultRateLimit,omitempty"`
+	DefaultRateLimit *int `json:"defaultRateLimit,omitempty"`
 	// DisableAutoCodeHostSyncs description: Disable periodic syncs of configured code host connections (repository metadata, permissions, batch changes changesets, etc)
 	DisableAutoCodeHostSyncs bool `json:"disableAutoCodeHostSyncs,omitempty"`
 	// DisableAutoGitUpdates description: Disable periodically fetching git contents for existing repositories.

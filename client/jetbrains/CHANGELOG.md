@@ -4,12 +4,14 @@
 
 ### Added
 
+- New settings layout [#56579](https://github.com/sourcegraph/sourcegraph/pull/56579)
 - New settings to enable debugging with the agent [#55821](https://github.com/sourcegraph/sourcegraph/pull/55821)
 - Added ability to hide completion suggestions with ESC key [#55955](https://github.com/sourcegraph/sourcegraph/pull/55955)
 - New alt-backslash shortcut to exlicitly trigger autocomplete [#55926](https://github.com/sourcegraph/sourcegraph/pull/55926)
 - Add visual hints about Cody status to status bar [#56046](https://github.com/sourcegraph/sourcegraph/pull/56046)
 - Added a status bar toggle for enabling/disabling Cody autocomplete [#56310](https://github.com/sourcegraph/sourcegraph/pull/56310)
 - New settings to enable/disable autocomplete for individual languages [#56411](https://github.com/sourcegraph/sourcegraph/pull/56411)
+- New onboarding panel is being displayed instead of a chat when user don't have any accounts defined [#56633](https://github.com/sourcegraph/sourcegraph/pull/56633)
 
 ### Changed
 
@@ -18,6 +20,9 @@
 - Use agent for recipes [#56196](https://github.com/sourcegraph/sourcegraph/pull/56196)
 - Authentication settings changed to accounts from three types of instance types to which user can connect [#56362](https://github.com/sourcegraph/sourcegraph/pull/56362)
 - Enabled manually triggering autocomplete even when implicit autocomplete is disabled (globally or for a language) [#56473](https://github.com/sourcegraph/sourcegraph/pull/56473)
+- Onboarding notifications merged into one simple notification to Open Cody [#56610](https://github.com/sourcegraph/sourcegraph/pull/56610)
+- Enabled implicit autocomplete by default [#56617](https://github.com/sourcegraph/sourcegraph/pull/56617)
+- Bumped JetBrains platform plugin compat to `221.5080.210` and higher [#56625](https://github.com/sourcegraph/sourcegraph/pull/56625)
 
 ### Deprecated
 
@@ -26,6 +31,7 @@
 - All network traffic from the plugin process [56001](https://github.com/sourcegraph/sourcegraph/pull/56001)
 - Non-agent autocomplete and chat [55997](https://github.com/sourcegraph/sourcegraph/pull/55997)
 - Support for 2022.0, 2022.1 is now required [#55831](https://github.com/sourcegraph/sourcegraph/pull/55831)
+- Removed code search onboarding notification [#56564](https://github.com/sourcegraph/sourcegraph/pull/56564)
 
 ### Fixed
 
