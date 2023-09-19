@@ -15,6 +15,7 @@ import (
 	"github.com/sourcegraph/sourcegraph/internal/goroutine"
 	"github.com/sourcegraph/sourcegraph/internal/httpserver"
 	"github.com/sourcegraph/sourcegraph/internal/observation"
+	"github.com/sourcegraph/sourcegraph/internal/profiler"
 	"github.com/sourcegraph/sourcegraph/internal/pubsub"
 	"github.com/sourcegraph/sourcegraph/internal/service"
 	"github.com/sourcegraph/sourcegraph/internal/updatecheck"
@@ -23,6 +24,8 @@ import (
 )
 
 func Main(ctx context.Context, obctx *observation.Context, ready service.ReadyFunc, config *Config) error {
+	profiler.Init()
+
 	// Initialize our server
 	serverHandler, err := newServerHandler(obctx.Logger, config)
 	if err != nil {
@@ -34,7 +37,7 @@ func Main(ctx context.Context, obctx *observation.Context, ready service.ReadyFu
 		addr,
 		&http.Server{
 			ReadTimeout:  75 * time.Second,
-			WriteTimeout: 10 * time.Minute,
+			WriteTimeout: 2 * time.Minute,
 			Handler:      serverHandler,
 		},
 	)
@@ -50,6 +53,10 @@ func Main(ctx context.Context, obctx *observation.Context, ready service.ReadyFu
 
 func newServerHandler(logger log.Logger, config *Config) (http.Handler, error) {
 	r := mux.NewRouter()
+
+	r.Path("/").Methods(http.MethodGet).HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "https://docs.sourcegraph.com/admin/pings", http.StatusFound)
+	})
 
 	r.Path("/-/version").Methods(http.MethodGet).HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -111,7 +118,7 @@ func newServerHandler(logger log.Logger, config *Config) (http.Handler, error) {
 	r.Path("/updates").
 		Methods(http.MethodGet, http.MethodPost).
 		HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			updatecheck.HandlePingRequest(logger, pubsubClient, w, r)
+			updatecheck.Handle(logger, pubsubClient, w, r)
 		})
 	return r, nil
 }
