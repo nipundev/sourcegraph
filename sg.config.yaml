@@ -132,6 +132,8 @@ env:
   GRPC_INTERNAL_ERROR_LOGGING_LOG_PROTOBUF_MESSAGES_JSON_TRUNCATION_SIZE_BYTES: "1KB"
   GRPC_INTERNAL_ERROR_LOGGING_LOG_PROTOBUF_MESSAGES_HANDLING_MAX_MESSAGE_SIZE_BYTES: "100MB"
 
+  TELEMETRY_GATEWAY_EXPORTER_EXPORT_ADDR: "http://127.0.0.1:10080"
+
 commands:
   server:
     description: Run an all-in-one sourcegraph/server image
@@ -270,6 +272,7 @@ commands:
         -e QDRANT__LOG_LEVEL=INFO \
         -e QDRANT__STORAGE__STORAGE_PATH=/data \
         -e QDRANT__STORAGE__SNAPSHOTS_PATH=/data \
+        -e QDRANT_INIT_FILE_PATH=/data/.qdrant-initialized \
         --entrypoint /usr/local/bin/qdrant \
         sourcegraph/qdrant:insiders
   worker:
@@ -312,6 +315,31 @@ commands:
       - internal
       - cmd/cody-gateway
 
+  telemetry-gateway:
+    cmd: |
+      # Telemetry Gateway needs this to parse and validate incoming license keys.
+      export SOURCEGRAPH_LICENSE_GENERATION_KEY=$(cat ../dev-private/enterprise/dev/test-license-generation-key.pem)
+      .bin/telemetry-gateway
+    install: |
+      if [ -n "$DELVE" ]; then
+        export GCFLAGS='all=-N -l'
+      fi
+      go build -gcflags="$GCFLAGS" -o .bin/telemetry-gateway github.com/sourcegraph/sourcegraph/cmd/telemetry-gateway
+    checkBinary: .bin/telemetry-gateway
+    env:
+      PORT: "10080"
+      DIAGNOSTICS_SECRET: sekret
+      TELEMETRY_GATEWAY_EVENTS_PUBSUB_ENABLED: false
+      SRC_LOG_LEVEL: info
+      # Enables metrics in dev via debugserver
+      SRC_PROF_HTTP: "127.0.0.1:6080"
+      GRPC_WEB_UI_ENABLED: true
+    watch:
+      - lib
+      - internal
+      - cmd/telemetry-gateway
+      - internal/telemetrygateway
+
   pings:
     cmd: |
       .bin/pings
@@ -328,6 +356,8 @@ commands:
       PINGS_PUBSUB_PROJECT_ID: 'telligentsourcegraph'
       PINGS_PUBSUB_TOPIC_ID: 'server-update-checks-test'
       HUBSPOT_ACCESS_TOKEN: ''
+      # Enables metrics in dev via debugserver
+      SRC_PROF_HTTP: "127.0.0.1:7011"
     watch:
       - lib
       - internal
@@ -690,10 +720,8 @@ commands:
         -v "$(pwd)"/dev/grafana/all:/sg_config_grafana/provisioning/datasources \
         grafana:candidate >"${GRAFANA_LOG_FILE}" 2>&1
     install: |
-      echo foobar
       mkdir -p "${GRAFANA_DISK}"
       mkdir -p "$(dirname ${GRAFANA_LOG_FILE})"
-      export CACHE=true
       docker inspect $CONTAINER >/dev/null 2>&1 && docker rm -f $CONTAINER
       bazel build //docker-images/grafana:image_tarball
       docker load --input $(bazel cquery //docker-images/grafana:image_tarball --output=files)
@@ -894,8 +922,8 @@ commands:
     cmd: pnpm --filter @sourcegraph/browser dev
     install: pnpm install
 
-  sourcegraph:
-    description: Single program (Go static binary) distribution
+  sourcegraph: &sourcegraph_command
+    description: Single-program distribution
     cmd: |
       unset SRC_GIT_SERVERS INDEXED_SEARCH_SERVERS REDIS_ENDPOINT
 
@@ -909,7 +937,7 @@ commands:
       if [ -n "$DELVE" ]; then
         export GCFLAGS='all=-N -l'
       fi
-      go build -gcflags="$GCFLAGS" -ldflags="-X github.com/sourcegraph/sourcegraph/internal/conf/deploy.forceType=app" -o .bin/sourcegraph github.com/sourcegraph/sourcegraph/cmd/sourcegraph
+      go build -gcflags="$GCFLAGS" -ldflags="-X github.com/sourcegraph/sourcegraph/internal/conf/deploy.forceType=single-program" -o .bin/sourcegraph github.com/sourcegraph/sourcegraph/cmd/sourcegraph
     checkBinary: .bin/sourcegraph
     env:
       ENTERPRISE: 1
@@ -922,6 +950,15 @@ commands:
       - internal
       - lib
       - schema
+
+  cody-app:
+    <<: *sourcegraph_command
+    description: Cody App
+    install: |
+      if [ -n "$DELVE" ]; then
+        export GCFLAGS='all=-N -l'
+      fi
+      go build -gcflags="$GCFLAGS" -ldflags="-X github.com/sourcegraph/sourcegraph/internal/conf/deploy.forceType=app" -o .bin/sourcegraph github.com/sourcegraph/sourcegraph/cmd/sourcegraph
 
   tauri:
     description: App shell (Tauri)
@@ -1080,6 +1117,7 @@ commandsets:
       - zoekt-web-1
       - blobstore
       - embeddings
+      - telemetry-gateway
     env:
       DISABLE_CODE_INSIGHTS_HISTORICAL: false
       DISABLE_CODE_INSIGHTS: false
@@ -1118,6 +1156,7 @@ commandsets:
       - blobstore
       - cody-gateway
       - embeddings
+      - telemetry-gateway
     env:
       SOURCEGRAPHDOTCOM_MODE: true
 
@@ -1445,19 +1484,33 @@ commandsets:
       - otel-collector
       - jaeger
 
-  app:
+  single-program:
     requiresDevPrivate: true
     checks:
       - git
     commands:
       - sourcegraph
+      - web
+      - caddy
+    env:
+      DISABLE_CODE_INSIGHTS: false
+      PRECISE_CODE_INTEL_UPLOAD_AWS_ENDPOINT: http://localhost:49000
+      EMBEDDINGS_UPLOAD_AWS_ENDPOINT: http://localhost:49000
+      USE_EMBEDDED_POSTGRESQL: false
+
+  app:
+    requiresDevPrivate: true
+    checks:
+      - git
+    commands:
+      - cody-app
       - docsite
       - web
       - caddy
       - tauri
     env:
       DISABLE_CODE_INSIGHTS: true
-      SOURCEGRAPH_APP: 1
+      CODY_APP: 1
       EXTSVC_CONFIG_ALLOW_EDITS: true
       PRECISE_CODE_INTEL_UPLOAD_AWS_ENDPOINT: http://localhost:49000
       EMBEDDINGS_UPLOAD_AWS_ENDPOINT: http://localhost:49000
