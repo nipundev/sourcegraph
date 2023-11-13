@@ -478,6 +478,8 @@ type BranchChangesetSpec struct {
 	Body string `json:"body"`
 	// Commits description: The Git commits with the proposed changes. These commits are pushed to the head ref.
 	Commits []*GitCommitDescription `json:"commits"`
+	// Fork description: Whether to publish the changeset to a fork of the target repository. If omitted, the changeset will be published to a branch directly on the target repository, unless the global `batches.enforceFork` setting is enabled. If set, this property will override any global setting.
+	Fork bool `json:"fork,omitempty"`
 	// HeadRef description: The full name of the Git ref that holds the changes proposed by this changeset. This ref will be created or updated with the commits.
 	HeadRef string `json:"headRef"`
 	// HeadRepository description: The GraphQL ID of the repository that contains the branch with this changeset's changes. Fork repositories and cross-repository changesets are not yet supported. Therefore, headRepository must be equal to baseRepository.
@@ -2378,6 +2380,8 @@ type SettingsExperimentalFeatures struct {
 	FuzzyFinderSymbols *bool `json:"fuzzyFinderSymbols,omitempty"`
 	// GoCodeCheckerTemplates description: Shows a panel with code insights templates for go code checker results.
 	GoCodeCheckerTemplates *bool `json:"goCodeCheckerTemplates,omitempty"`
+	// NewSearchNavigationUI description: Enables new experimental search UI navigation
+	NewSearchNavigationUI *bool `json:"newSearchNavigationUI,omitempty"`
 	// ProactiveSearchResultsAggregations description: Search results aggregations are triggered automatically with a search.
 	ProactiveSearchResultsAggregations *bool `json:"proactiveSearchResultsAggregations,omitempty"`
 	// SearchContextsQuery description: DEPRECATED: This feature is now permanently enabled. Enables query based search contexts
@@ -2442,6 +2446,7 @@ func (v *SettingsExperimentalFeatures) UnmarshalJSON(data []byte) error {
 	delete(m, "fuzzyFinderRepositories")
 	delete(m, "fuzzyFinderSymbols")
 	delete(m, "goCodeCheckerTemplates")
+	delete(m, "newSearchNavigationUI")
 	delete(m, "proactiveSearchResultsAggregations")
 	delete(m, "searchContextsQuery")
 	delete(m, "searchQueryInput")

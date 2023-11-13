@@ -92,10 +92,7 @@ export const SearchNavbarItem: React.FunctionComponent<React.PropsWithChildren<P
                     queryState={queryState}
                     onChange={setQueryState}
                     onSubmit={onSubmit}
-                    platformContext={props.platformContext}
                     authenticatedUser={props.authenticatedUser}
-                    fetchSearchContexts={props.fetchSearchContexts}
-                    getUserSearchContextNamespaces={props.getUserSearchContextNamespaces}
                     isSourcegraphDotCom={props.isSourcegraphDotCom}
                     submitSearch={submitSearchOnChange}
                     selectedSearchContextSpec={props.selectedSearchContextSpec}
@@ -108,7 +105,6 @@ export const SearchNavbarItem: React.FunctionComponent<React.PropsWithChildren<P
                         setCaseSensitivity={setSearchCaseSensitivity}
                         searchMode={searchMode}
                         setSearchMode={setSearchMode}
-                        settingsCascade={props.settingsCascade}
                         navbarSearchQuery={queryState.query}
                         submitSearch={submitSearchOnChange}
                         structuralSearchDisabled={window.context?.experimentalFeatures?.structuralSearch === 'disabled'}

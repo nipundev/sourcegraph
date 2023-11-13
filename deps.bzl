@@ -3075,13 +3075,6 @@ def go_dependencies():
         sum = "h1:AWwleXJkX/nhcU9bZSnZoi3h/qGYqQAGhq6zZe/aQW8=",
         version = "v1.1.1",
     )
-    go_repository(
-        name = "com_github_gorilla_csrf",
-        build_file_proto_mode = "disable_global",
-        importpath = "github.com/gorilla/csrf",
-        sum = "h1:Ir3o2c1/Uzj6FBxMlAUB6SivgVMy1ONXwYgXn+/aHPE=",
-        version = "v1.7.1",
-    )
 
     go_repository(
         name = "com_github_gorilla_css",
@@ -5919,6 +5912,13 @@ def go_dependencies():
         sum = "h1:oc+BUJi+WYypX8i7vnxz4D4z/99b/H0u5Oc+b1rA5fI=",
         version = "v0.0.0-20230822024612-edb48c530722",
     )
+    go_repository(
+        name = "com_github_sourcegraph_managed_services_platform_cdktf_gen_google_beta",
+        build_file_proto_mode = "disable_global",
+        importpath = "github.com/sourcegraph/managed-services-platform-cdktf/gen/google_beta",
+        sum = "h1:3rJiF4VGyStWXrqJtVlXBJnpe82Q1k9k74dElVPolR8=",
+        version = "v0.0.0-20231106184355-f739cf8e1d49",
+    )
 
     go_repository(
         name = "com_github_sourcegraph_managed_services_platform_cdktf_gen_random",
@@ -5963,8 +5963,8 @@ def go_dependencies():
         name = "com_github_sourcegraph_zoekt",
         build_file_proto_mode = "disable_global",
         importpath = "github.com/sourcegraph/zoekt",
-        sum = "h1:W99c7C2pQfMOqXF55tEkFIlcDJvBo/BSCU9SHQj5iWw=",
-        version = "v0.0.0-20231106175229-bec12a772b51",
+        sum = "h1:6+khC/kBCn1Am0TX4ne4fwqKGdY02BZgm/gKNKppNnA=",
+        version = "v0.0.0-20231110161813-2355607d5ff8",
     )
 
     go_repository(

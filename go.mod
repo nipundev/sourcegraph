@@ -118,7 +118,6 @@ require (
 	github.com/google/go-querystring v1.1.0
 	github.com/google/uuid v1.3.1
 	github.com/gorilla/context v1.1.1
-	github.com/gorilla/csrf v1.7.1
 	github.com/gorilla/mux v1.8.0
 	github.com/gorilla/schema v1.2.0
 	github.com/gorilla/securecookie v1.1.1
@@ -271,6 +270,7 @@ require (
 	github.com/qdrant/go-client v1.4.1
 	github.com/sourcegraph/managed-services-platform-cdktf/gen/cloudflare v0.0.0-20230822024612-edb48c530722
 	github.com/sourcegraph/managed-services-platform-cdktf/gen/google v0.0.0-20230822024612-edb48c530722
+	github.com/sourcegraph/managed-services-platform-cdktf/gen/google_beta v0.0.0-20231106184355-f739cf8e1d49
 	github.com/sourcegraph/managed-services-platform-cdktf/gen/random v0.0.0-20230822024612-edb48c530722
 	github.com/vektah/gqlparser/v2 v2.4.5
 	go.opentelemetry.io/collector/config/confighttp v0.81.0
@@ -442,7 +442,7 @@ require (
 	github.com/go-git/go-billy/v5 v5.4.1 // indirect
 	github.com/go-kit/log v0.2.1 // indirect
 	github.com/go-logfmt/logfmt v0.5.1 // indirect
-	github.com/go-logr/logr v1.2.4 // indirect
+	github.com/go-logr/logr v1.2.4
 	github.com/go-logr/stdr v1.2.2
 	github.com/go-openapi/analysis v0.21.4 // indirect
 	github.com/go-openapi/errors v0.20.3 // indirect
@@ -547,7 +547,7 @@ require (
 	github.com/sourcegraph/conc v0.2.0
 	github.com/sourcegraph/mountinfo v0.0.0-20231018142932-e00da332dac5
 	github.com/sourcegraph/sourcegraph/monitoring v0.0.0-20230124144931-b2d81b1accb6
-	github.com/sourcegraph/zoekt v0.0.0-20231106175229-bec12a772b51
+	github.com/sourcegraph/zoekt v0.0.0-20231110161813-2355607d5ff8
 	github.com/spf13/cobra v1.7.0 // indirect
 	github.com/spf13/pflag v1.0.5 // indirect
 	github.com/stretchr/objx v0.5.0 // indirect
