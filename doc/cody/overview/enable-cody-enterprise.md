@@ -168,7 +168,7 @@ You're all set to use Cody on your self-hosted Sourcegraph instance. You can lea
 ## Cody on Sourcegraph Cloud
 
 - With [Sourcegraph Cloud](../../cloud/index.md), you get Cody as a managed service, and you **do not** need to [enable Cody as is required for self-hosted setup](#enable-cody-on-your-sourcegraph-instance)
-- However, by contacting your account manager, Cody can still be enabled on-demand on your Sourcegraph instance. The Sourcegraph team will refer to the [handbook](https://handbook.sourcegraph.com/departments/cloud/#managed-instance-requests)
+- However, by contacting your account manager, Cody can still be enabled on-demand on your Sourcegraph instance. The Sourcegraph team will refer to the [handbook](https://golinks.io/cloud-requests-cody)
 - Next, you can configure the [VS Code extension](#configure-the-vs-code-extension) by following the same steps as mentioned for the self-hosted environment
 - After which, you are all set to use Cody with Sourcegraph Cloud
 
@@ -295,22 +295,28 @@ Once done, go to **Site admin > Site configuration** (`/site-admin/configuration
     "fastChatModel": "<deployment name of the model>",
     "completionModel": "<deployment name of the model>",
     "endpoint": "<endpoint>",
-    "accessToken": "<key>"
+    "accessToken": "<See below>"
   }
 }
 ```
+
+For the access token, you can either:
+
+- As of 5.2.4 the access token can be left empty and it will rely on Environmental, Workload Identity or Managed Identity credentials configured for the `frontend` and `worker` services
+- Set it to `<API_KEY>` if directly configuring the credentials using the API key specified in the Azure portal
+
 
 ### Anthropic Claude through AWS Bedrock
 
 <aside class="experimental">
 <p>
-<span style="margin-right:0.25rem;" class="badge badge-experimental">Experimental</span> AWS Bedrock support is in the experimental stage.
+<span style="margin-right:0.25rem;" class="badge badge-experimental">Experimental</span> AWS Bedrock support is in the experimental stage. You must have Sourcegraph 5.2.2 or higher.
 <br />
 For any feedback, you can <a href="https://about.sourcegraph.com/contact">contact us</a> directly, file an <a href="https://github.com/sourcegraph/cody/issues">issue</a>, join our <a href="https://discord.com/servers/sourcegraph-969688426372825169">Discord</a>, or <a href="https://twitter.com/sourcegraphcody">tweet</a>.
 </p>
 </aside>
 
-First, make sure you can access AWS Bedrock (currently in beta). Then, request access to the Anthropic Claude models in Bedrock.
+First, make sure you can access AWS Bedrock. Then, request access to the Anthropic Claude models in Bedrock.
 This may take some time to provision.
 
 Next, create an IAM user with programmatic access in your AWS account. Depending on your AWS setup, different ways may be required to provide access. All completion requests are made from the `frontend` service, so this service needs to be able to access AWS. You can use instance role bindings or directly configure the IAM user credentials in the configuration.

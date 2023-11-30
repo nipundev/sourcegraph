@@ -3,10 +3,9 @@
 load("@aspect_rules_swc//swc:defs.bzl", "swc")
 load("@bazel_skylib//lib:partial.bzl", "partial")
 load("@bazel_skylib//rules:expand_template.bzl", "expand_template")
-load("@aspect_rules_js//js:defs.bzl", "js_library")
+load("@aspect_rules_js//js:defs.bzl", "js_binary", "js_library")
 load("@aspect_rules_js//npm:defs.bzl", _npm_package = "npm_package")
 load("@aspect_rules_ts//ts:defs.bzl", _ts_project = "ts_project")
-load("@aspect_rules_js//js:defs.bzl", "js_binary")
 load("//dev:eslint.bzl", "eslint_test_with_types", "get_client_package_path")
 load("@npm//:vitest/package_json.bzl", vitest_bin = "bin")
 load(":sass.bzl", _sass = "sass")
@@ -153,8 +152,8 @@ def vitest_test(name, data = [], **kwargs):
             "//:node_modules/jsdom",
         ],
         env = {"BAZEL": "1", "CI": "1"},
-        patch_node_fs = False,
-        tags = kwargs.pop("tags", []) + ["no-sandbox"],
+        patch_node_fs = True,
+        tags = kwargs.pop("tags", []),
         timeout = kwargs.pop("timeout", "short"),
         **kwargs
     )
